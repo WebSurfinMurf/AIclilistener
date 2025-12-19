@@ -270,11 +270,17 @@ Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process
 
 ## Version History
 
+### v1.2.1
+- Refactored Summarize-Files.ps1 to use CodexClient.ps1 for consistent pipe I/O
+- demo.ps1 already uses CodexClient.ps1 (no changes needed)
+- Single source of truth for pipe communication
+
 ### v1.2.0
 - **Critical Fix**: Raw byte I/O instead of StreamReader/StreamWriter
 - Fixes PS 5.1 buffering issue that caused ReadLine() to block indefinitely
 - Both service and client now use direct pipe.Read()/Write() with UTF-8 encoding
-- Improved terminal response detection in client
+- Auto-detect codex executable path (handles .ps1/.cmd/.exe wrappers)
+- Extract agent message from `.text` field (Codex CLI format)
 
 ### v1.1.0
 - Security: Pipe ACLs restrict to current user

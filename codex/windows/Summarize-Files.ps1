@@ -35,7 +35,7 @@
 
 .NOTES
     Requires CodexService.ps1 to be running
-    Version: 1.1.0 - Added resume capability and incremental saving
+    Version: 1.2.0 - Uses CodexClient.ps1 for consistent pipe communication
 #>
 
 param(
@@ -77,96 +77,59 @@ function Write-Log {
     Write-Host "[$timestamp] $Message" -ForegroundColor $color
 }
 
-function Format-JsonPretty {
-    param([string]$Json)
-    try {
-        $obj = $Json | ConvertFrom-Json
-        return $obj | ConvertTo-Json -Depth 10
-    } catch {
-        return $Json
-    }
-}
-
 function Send-CodexRequest {
     param(
         [string]$PipeName,
-        [hashtable]$Request
+        [string]$Prompt,
+        [int]$TimeoutSeconds = 120
     )
 
-    # Format request as pretty JSON for display
-    $requestJson = $Request | ConvertTo-Json -Depth 5
-    $requestJsonCompact = $Request | ConvertTo-Json -Depth 5 -Compress
+    # Get the script directory to find CodexClient.ps1
+    $scriptDir = Split-Path -Parent $MyInvocation.ScriptName
+    $clientPath = Join-Path $scriptDir "CodexClient.ps1"
 
-    Write-Log "REQUEST:" "Request"
-    Write-Host $requestJson -ForegroundColor Blue
-    Write-Host ""
+    if (-not (Test-Path $clientPath)) {
+        Write-Log "CodexClient.ps1 not found at: $clientPath" "Error"
+        return @{ Success = $false; Summary = "[ERROR] CodexClient.ps1 not found"; Response = $null }
+    }
+
+    Write-Log "Sending request via CodexClient.ps1..." "Request"
 
     try {
-        # Connect to named pipe
-        $pipeClient = New-Object System.IO.Pipes.NamedPipeClientStream(
-            ".",
-            $PipeName,
-            [System.IO.Pipes.PipeDirection]::InOut
-        )
+        # Call CodexClient.ps1 with -Raw to get JSON output
+        $output = & $clientPath -PipeName $PipeName -Prompt $Prompt -Sandbox "read-only" -TimeoutSeconds $TimeoutSeconds -Raw 2>&1
 
-        $pipeClient.Connect(10000)  # 10 second timeout
-
-        $reader = New-Object System.IO.StreamReader($pipeClient, [System.Text.Encoding]::UTF8)
-        $writer = New-Object System.IO.StreamWriter($pipeClient, [System.Text.Encoding]::UTF8)
-        $writer.AutoFlush = $true
-
-        # Send request
-        $writer.WriteLine($requestJsonCompact)
-
-        # Collect responses
+        # Find the final success/error response
         $finalResult = $null
         $summary = ""
 
-        while ($true) {
-            $line = $reader.ReadLine()
-            if ($null -eq $line) { break }
-
-            try {
-                $response = $line | ConvertFrom-Json
-
-                # Display response
-                Write-Log "RESPONSE ($($response.status)):" "Response"
-                Write-Host (Format-JsonPretty $line) -ForegroundColor Magenta
-                Write-Host ""
-
-                # Extract summary from final result
-                if ($response.status -eq "success") {
-                    $finalResult = $response
-                    if ($response.result.message) {
-                        $summary = $response.result.message
+        foreach ($line in $output) {
+            if ($line -match '^\{') {
+                try {
+                    $response = $line | ConvertFrom-Json
+                    if ($response.status -eq "success") {
+                        $finalResult = $response
+                        if ($response.result.message) {
+                            $summary = $response.result.message
+                        }
+                    } elseif ($response.status -eq "error") {
+                        $finalResult = $response
+                        $summary = "[ERROR] $($response.error)"
                     }
-                } elseif ($response.status -eq "error") {
-                    $summary = "[ERROR] $($response.error)"
+                } catch {
+                    # Not valid JSON, skip
                 }
-
-            } catch {
-                Write-Log "Raw: $line" "Warning"
             }
         }
 
-        $reader.Dispose()
-        $writer.Dispose()
-        $pipeClient.Dispose()
-
         return @{
-            Success = ($finalResult.status -eq "success")
+            Success = ($finalResult -and $finalResult.status -eq "success")
             Summary = $summary
             Response = $finalResult
         }
 
-    } catch [TimeoutException] {
-        Write-Log "Connection timeout - is CodexService.ps1 running?" "Error"
-        return @{ Success = $false; Summary = "[ERROR] Service not available"; Response = $null }
-    } catch [System.IO.FileNotFoundException] {
-        Write-Log "Pipe not found - start CodexService.ps1 first" "Error"
-        return @{ Success = $false; Summary = "[ERROR] Service not running"; Response = $null }
     } catch {
-        Write-Log "Error: $($_.Exception.Message)" "Error"
+        Write-Log "Error calling CodexClient.ps1: $($_.Exception.Message)" "Error"
         return @{ Success = $false; Summary = "[ERROR] $($_.Exception.Message)"; Response = $null }
     }
 }
@@ -327,10 +290,8 @@ foreach ($row in $csv) {
     $extension = $fileInfo.Extension
     $fileName = $fileInfo.Name
 
-    # Build Codex request - human readable
-    $request = @{
-        id = "summary-row-$rowNum"
-        prompt = @"
+    # Build Codex prompt
+    $prompt = @"
 Please read and summarize the following file.
 
 FILE: $fileName
@@ -348,14 +309,9 @@ Provide a concise summary (2-4 sentences) describing:
 
 Keep the summary brief and technical.
 "@
-        options = @{
-            sandbox = "read-only"
-            timeout_seconds = 120
-        }
-    }
 
-    # Send to Codex
-    $result = Send-CodexRequest -PipeName $PipeName -Request $request
+    # Send to Codex via CodexClient.ps1
+    $result = Send-CodexRequest -PipeName $PipeName -Prompt $prompt -TimeoutSeconds 120
 
     if ($result.Success) {
         # Clean up summary (remove extra whitespace)
