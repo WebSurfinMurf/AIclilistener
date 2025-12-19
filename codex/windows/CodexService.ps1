@@ -24,7 +24,7 @@
 
 .NOTES
     Author: AI CLI Listener Project
-    Version: 1.4.0 - Full disk read access, no approval prompts
+    Version: 1.4.1 - Full disk read access, no approval prompts (via -c config)
     Requires: OpenAI Codex CLI installed and on PATH
 
     IMPORTANT: PowerShell 5.1 has a known bug where multiline strings passed
@@ -88,7 +88,7 @@ $script:Config = @{
     TimeoutSeconds = $TimeoutSeconds
     WorkingDirectory = $WorkingDirectory
     TempRoot = Join-Path $env:TEMP "codex-sessions"
-    Version = "1.4.0"
+    Version = "1.4.1"
 }
 
 # Ensure temp directory exists
@@ -290,12 +290,12 @@ function Invoke-CodexRequest {
     }
 
     # Full disk read access - allows reading any file on the machine
+    # Never ask for approval - runs autonomously
+    # Both settings passed via -c config flag (exec subcommand doesn't support -a directly)
     $codexArgs += "-c"
     $codexArgs += 'sandbox_permissions=["disk-full-read-access"]'
-
-    # Never ask for approval - runs autonomously
-    $codexArgs += "-a"
-    $codexArgs += "never"
+    $codexArgs += "-c"
+    $codexArgs += 'approval_policy="never"'
 
     # Save prompt to temp file
     $promptText = $Request.prompt
