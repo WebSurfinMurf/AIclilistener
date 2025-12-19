@@ -35,7 +35,7 @@
 
 .NOTES
     Requires CodexService.ps1 to be running
-    Version: 1.2.0 - Uses CodexClient.ps1 for consistent pipe communication
+    Version: 1.2.1 - Fix CSV encoding/BOM issues and null path handling
 #>
 
 param(
@@ -180,23 +180,30 @@ if (-not (Test-Path $CsvPath)) {
     exit 1
 }
 
-# Read CSV
+# Read CSV (with explicit UTF8 encoding to handle BOM)
 Write-Log "Reading CSV: $CsvPath" "Info"
-$csv = Import-Csv -Path $CsvPath
+$csv = Import-Csv -Path $CsvPath -Encoding UTF8
 
 if ($csv.Count -eq 0) {
     Write-Log "CSV is empty" "Error"
     exit 1
 }
 
-# Determine file column
-$columns = $csv[0].PSObject.Properties.Name
+# Determine file column - strip any BOM characters from column names
+$columns = $csv[0].PSObject.Properties.Name | ForEach-Object { $_ -replace '^\xEF\xBB\xBF', '' -replace '^\uFEFF', '' }
 if (-not $FileColumn) {
     $FileColumn = $columns[0]
     Write-Log "Using first column for file paths: '$FileColumn'" "Info"
 } elseif ($FileColumn -notin $columns) {
     Write-Log "Column '$FileColumn' not found. Available: $($columns -join ', ')" "Error"
     exit 1
+}
+
+# Also try to match with BOM-prefixed version in case column names weren't cleaned
+$actualColumnName = ($csv[0].PSObject.Properties.Name | Where-Object { ($_ -replace '^\xEF\xBB\xBF', '' -replace '^\uFEFF', '') -eq $FileColumn }) | Select-Object -First 1
+if ($actualColumnName -and $actualColumnName -ne $FileColumn) {
+    Write-Log "Note: Column has BOM prefix, using actual name" "Info"
+    $FileColumn = $actualColumnName
 }
 
 # Set output path
@@ -216,12 +223,15 @@ $isFirstWrite = $true
 
 if ($Resume -and (Test-Path $OutputPath)) {
     Write-Log "Resume mode: Loading previously processed files..." "Info"
-    $existing = Import-Csv -Path $OutputPath -ErrorAction SilentlyContinue
+    $existing = Import-Csv -Path $OutputPath -Encoding UTF8 -ErrorAction SilentlyContinue
     if ($existing) {
         foreach ($row in $existing) {
             $fp = $row.$FileColumn
-            if ($fp -and $row.$SummaryColumn -and $row.$SummaryColumn -notlike "[ERROR]*") {
-                $alreadyProcessed[$fp] = $row.$SummaryColumn
+            if ($fp) {
+                $fp = $fp.Trim('"', "'", ' ')
+                if ($fp -and $row.$SummaryColumn -and $row.$SummaryColumn -notlike "[ERROR]*" -and $row.$SummaryColumn -notlike "[FILE NOT FOUND]*") {
+                    $alreadyProcessed[$fp] = $row.$SummaryColumn
+                }
             }
         }
         Write-Log "Found $($alreadyProcessed.Count) already processed files" "Success"
@@ -245,8 +255,17 @@ foreach ($row in $csv) {
     $rowNum++
     $filePath = $row.$FileColumn
 
+    # Handle null/empty file paths
+    if (-not $filePath) {
+        Write-Log "ROW $rowNum / $($csv.Count): Empty file path, skipping" "Warning"
+        continue
+    }
+
+    # Trim quotes from file path if present (CSV sometimes double-quotes values)
+    $filePath = $filePath.Trim('"', "'", ' ')
+
     # Check if already processed (resume mode)
-    if ($alreadyProcessed.ContainsKey($filePath)) {
+    if ($filePath -and $alreadyProcessed.ContainsKey($filePath)) {
         $skippedCount++
         Write-Log "SKIP $rowNum / $($csv.Count): $filePath (already processed)" "Info"
         continue
@@ -256,9 +275,9 @@ foreach ($row in $csv) {
     Write-Log "ROW $rowNum / $($csv.Count): $filePath" "Info"
     Write-Host "========================================" -ForegroundColor Yellow
 
-    # Create result row with all original columns
+    # Create result row with all original columns - use actual column names from CSV
     $resultRow = [ordered]@{}
-    foreach ($col in $columns) {
+    foreach ($col in $csv[0].PSObject.Properties.Name) {
         $resultRow[$col] = $row.$col
     }
 
