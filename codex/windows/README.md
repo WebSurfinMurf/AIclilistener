@@ -12,7 +12,7 @@ git clone https://github.com/WebSurfinMurf/AIclilistener.git
 cd AIclilistener\codex\windows
 ```
 
-### 2. Run the demo (recommended first step)
+### 2. Run the demo (recommended)
 ```powershell
 .\demo.ps1
 ```

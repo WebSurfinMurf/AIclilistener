@@ -53,9 +53,9 @@ codex/windows/
 
 ---
 
-## Step-by-Step Testing
+## Testing
 
-### Step 1: Start the Service (Terminal 1)
+### Start the Service (Terminal 1)
 ```powershell
 cd AIclilistener\codex\windows
 .\Start-Service.bat
@@ -72,7 +72,7 @@ You should see:
 [INFO] Service started. Waiting for connections...
 ```
 
-### Step 2: Test Basic Commands (Terminal 2)
+### Test Basic Commands (Terminal 2)
 ```powershell
 cd AIclilistener\codex\windows
 
@@ -83,12 +83,12 @@ cd AIclilistener\codex\windows
 .\CodexClient.ps1 -Command status
 ```
 
-### Step 3: Send a Prompt
+### Send a Prompt
 ```powershell
 .\CodexClient.ps1 -Prompt "Explain what Docker is in 2 sentences"
 ```
 
-### Step 4: Run the Demo
+### Run the Demo
 ```powershell
 .\demo.ps1
 ```
