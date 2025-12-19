@@ -221,13 +221,35 @@ function Invoke-CodexRequest {
     $timeout = if ($options.timeout_seconds) { $options.timeout_seconds } else { $script:Config.TimeoutSeconds }
 
     try {
-        # Setup process - use cmd.exe to handle .cmd/.bat wrappers
+        # Setup process - handle different executable types
         $psi = New-Object System.Diagnostics.ProcessStartInfo
-        $psi.FileName = "cmd.exe"
         $codexArgsStr = ($codexArgs | ForEach-Object {
             if ($_ -match '\s') { "`"$_`"" } else { $_ }
         }) -join " "
-        $psi.Arguments = "/c `"$script:CodexPath`" $codexArgsStr"
+
+        $ext = [System.IO.Path]::GetExtension($script:CodexPath).ToLower()
+        switch ($ext) {
+            ".ps1" {
+                # PowerShell script - run through powershell.exe
+                $psi.FileName = "powershell.exe"
+                $psi.Arguments = "-ExecutionPolicy Bypass -NoProfile -File `"$script:CodexPath`" $codexArgsStr"
+            }
+            ".cmd" {
+                # Batch file - run through cmd.exe
+                $psi.FileName = "cmd.exe"
+                $psi.Arguments = "/c `"$script:CodexPath`" $codexArgsStr"
+            }
+            ".bat" {
+                # Batch file - run through cmd.exe
+                $psi.FileName = "cmd.exe"
+                $psi.Arguments = "/c `"$script:CodexPath`" $codexArgsStr"
+            }
+            default {
+                # Assume .exe or other directly executable
+                $psi.FileName = $script:CodexPath
+                $psi.Arguments = $codexArgsStr
+            }
+        }
         $psi.WorkingDirectory = $workDir
         $psi.RedirectStandardOutput = $true
         $psi.RedirectStandardError = $true
