@@ -118,16 +118,25 @@ if ($pdftotextPath) {
         Write-Host "[INFO] Trying: $($mode.Name)..." -ForegroundColor Gray
 
         $tempOutput = Join-Path $env:TEMP "pdftest_$(Get-Random).txt"
-        $args = $mode.Args + @($PdfPath, $tempOutput)
 
-        Write-Host "[INFO] Command: $pdftotextPath $($args -join ' ')" -ForegroundColor Gray
+        # Build argument string with proper quoting for paths with spaces
+        $argString = ($mode.Args -join ' ') + " `"$PdfPath`" `"$tempOutput`""
+
+        Write-Host "[INFO] Command: $pdftotextPath $argString" -ForegroundColor Gray
 
         $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
         try {
-            $process = Start-Process -FilePath $pdftotextPath -ArgumentList $args -Wait -NoNewWindow -PassThru
+            # Use & operator for better argument handling
+            $output = & $pdftotextPath @($mode.Args) $PdfPath $tempOutput 2>&1
+            $exitCode = $LASTEXITCODE
             $stopwatch.Stop()
 
-            if ($process.ExitCode -eq 0 -and (Test-Path $tempOutput)) {
+            # Show any error output from pdftotext
+            if ($output) {
+                Write-Host "[DEBUG] pdftotext output: $output" -ForegroundColor Gray
+            }
+
+            if ($exitCode -eq 0 -and (Test-Path $tempOutput)) {
                 $content = Get-Content $tempOutput -Raw -Encoding UTF8
                 Remove-Item $tempOutput -Force -ErrorAction SilentlyContinue
 
@@ -144,11 +153,23 @@ if ($pdftotextPath) {
                         $bestMethod = "pdftotext ($($mode.Name))"
                     }
                 } else {
-                    Write-Host "[WARN] $($mode.Name): Empty output" -ForegroundColor Yellow
+                    Write-Host "[WARN] $($mode.Name): No text found (scanned/image PDF?)" -ForegroundColor Yellow
+                }
+            } elseif (Test-Path $tempOutput) {
+                # File created but exit code non-zero - check content anyway
+                $content = Get-Content $tempOutput -Raw -Encoding UTF8
+                Remove-Item $tempOutput -Force -ErrorAction SilentlyContinue
+                if ($content -and $content.Trim().Length -gt 0) {
+                    Write-Host "[WARN] $($mode.Name): Exit code $exitCode but got content" -ForegroundColor Yellow
+                    if (-not $bestContent -or $content.Length -gt $bestContent.Length) {
+                        $bestContent = $content
+                        $bestMethod = "pdftotext ($($mode.Name))"
+                    }
+                } else {
+                    Write-Host "[FAIL] $($mode.Name): Exit code $exitCode, no content" -ForegroundColor Red
                 }
             } else {
-                Write-Host "[FAIL] $($mode.Name): Exit code $($process.ExitCode)" -ForegroundColor Red
-                if (Test-Path $tempOutput) { Remove-Item $tempOutput -Force -ErrorAction SilentlyContinue }
+                Write-Host "[FAIL] $($mode.Name): Exit code $exitCode, no output file created" -ForegroundColor Red
             }
         } catch {
             $stopwatch.Stop()
@@ -305,14 +326,13 @@ if ($bestContent) {
 } else {
     Write-Host "[FAIL] No text could be extracted from this PDF" -ForegroundColor Red
     Write-Host ""
-    Write-Host "Possible reasons:" -ForegroundColor Yellow
-    Write-Host "  - PDF contains only scanned images (needs OCR)" -ForegroundColor Gray
-    Write-Host "  - PDF is encrypted or protected" -ForegroundColor Gray
-    Write-Host "  - PDF uses unusual encoding" -ForegroundColor Gray
+    Write-Host "This PDF is likely a SCANNED DOCUMENT (image-only, no text layer)." -ForegroundColor Yellow
     Write-Host ""
-    Write-Host "Try:" -ForegroundColor Yellow
-    Write-Host "  - Install pdftotext: .\Install-PdfToText.ps1" -ForegroundColor Gray
-    Write-Host "  - Use OCR software for scanned PDFs" -ForegroundColor Gray
+    Write-Host "Options for scanned PDFs:" -ForegroundColor Cyan
+    Write-Host "  - Use Windows OCR: Right-click PDF > Open with > Microsoft Edge > Ctrl+A to copy" -ForegroundColor Gray
+    Write-Host "  - Use online OCR: smallpdf.com, ilovepdf.com, adobe.com/acrobat/online" -ForegroundColor Gray
+    Write-Host "  - Use Tesseract OCR (free): github.com/tesseract-ocr/tesseract" -ForegroundColor Gray
+    Write-Host "  - Use Adobe Acrobat Pro: Edit > Scan & OCR" -ForegroundColor Gray
 }
 
 Write-Host ""
