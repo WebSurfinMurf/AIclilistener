@@ -35,7 +35,7 @@
 
 .NOTES
     Requires CodexService.ps1 to be running
-    Version: 1.2.1 - Fix CSV encoding/BOM issues and null path handling
+    Version: 1.2.2 - Robust BOM handling with raw/clean column name separation
 #>
 
 param(
@@ -189,22 +189,52 @@ if ($csv.Count -eq 0) {
     exit 1
 }
 
-# Determine file column - strip any BOM characters from column names
-$columns = $csv[0].PSObject.Properties.Name | ForEach-Object { $_ -replace '^\xEF\xBB\xBF', '' -replace '^\uFEFF', '' }
+# Get actual column names from CSV
+$rawColumns = @($csv[0].PSObject.Properties.Name)
+
+# Clean column names - strip BOM (U+FEFF = char 65279) and other invisible chars
+function Clean-ColumnName {
+    param([string]$Name)
+    # Remove BOM (U+FEFF), zero-width chars, and trim whitespace
+    $cleaned = $Name -replace '[\uFEFF\uFFFE\u200B-\u200D\u2060]', ''
+    return $cleaned.Trim()
+}
+
+$cleanColumns = $rawColumns | ForEach-Object { Clean-ColumnName $_ }
+
+# Debug: show what we found
+Write-Log "Raw column names: $($rawColumns -join ', ') (lengths: $($rawColumns | ForEach-Object { $_.Length }))" "Info"
+Write-Log "Clean column names: $($cleanColumns -join ', ')" "Info"
+
+# Determine file column
 if (-not $FileColumn) {
-    $FileColumn = $columns[0]
+    # Use the cleaned name for display, but we need the raw name to access data
+    $FileColumn = $cleanColumns[0]
     Write-Log "Using first column for file paths: '$FileColumn'" "Info"
-} elseif ($FileColumn -notin $columns) {
-    Write-Log "Column '$FileColumn' not found. Available: $($columns -join ', ')" "Error"
+}
+
+# Find the actual raw column name that matches our clean column name
+$actualColumnName = $null
+for ($i = 0; $i -lt $rawColumns.Count; $i++) {
+    if ($cleanColumns[$i] -eq $FileColumn) {
+        $actualColumnName = $rawColumns[$i]
+        break
+    }
+}
+
+if (-not $actualColumnName) {
+    Write-Log "Column '$FileColumn' not found. Available: $($cleanColumns -join ', ')" "Error"
     exit 1
 }
 
-# Also try to match with BOM-prefixed version in case column names weren't cleaned
-$actualColumnName = ($csv[0].PSObject.Properties.Name | Where-Object { ($_ -replace '^\xEF\xBB\xBF', '' -replace '^\uFEFF', '') -eq $FileColumn }) | Select-Object -First 1
-if ($actualColumnName -and $actualColumnName -ne $FileColumn) {
-    Write-Log "Note: Column has BOM prefix, using actual name" "Info"
-    $FileColumn = $actualColumnName
+if ($actualColumnName -ne $FileColumn) {
+    Write-Log "Note: Using raw column name '$actualColumnName' (has hidden chars)" "Info"
 }
+
+# Use the actual raw column name to access CSV data
+$FileColumnRaw = $actualColumnName
+# Use clean column names for display/output
+$columns = $cleanColumns
 
 # Set output path
 if (-not $OutputPath) {
@@ -226,7 +256,9 @@ if ($Resume -and (Test-Path $OutputPath)) {
     $existing = Import-Csv -Path $OutputPath -Encoding UTF8 -ErrorAction SilentlyContinue
     if ($existing) {
         foreach ($row in $existing) {
-            $fp = $row.$FileColumn
+            # Try both raw and clean column names
+            $fp = $row.$FileColumnRaw
+            if (-not $fp) { $fp = $row.$FileColumn }
             if ($fp) {
                 $fp = $fp.Trim('"', "'", ' ')
                 if ($fp -and $row.$SummaryColumn -and $row.$SummaryColumn -notlike "[ERROR]*" -and $row.$SummaryColumn -notlike "[FILE NOT FOUND]*") {
@@ -253,7 +285,8 @@ $skippedCount = 0
 
 foreach ($row in $csv) {
     $rowNum++
-    $filePath = $row.$FileColumn
+    # Use raw column name to access data (handles BOM in column name)
+    $filePath = $row.$FileColumnRaw
 
     # Handle null/empty file paths
     if (-not $filePath) {
