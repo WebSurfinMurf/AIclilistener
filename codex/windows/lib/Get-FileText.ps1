@@ -269,10 +269,30 @@ function Get-WordText {
 function Get-PdfText {
     param([string]$FilePath)
 
-    # Method 1: Try using Word to open and extract PDF text (Word 2013+ can read PDFs)
+    # Method 1: Try pdftotext (Poppler) - fast and reliable
+    $pdftotextPath = Find-PdfToText
+    if ($pdftotextPath) {
+        try {
+            $tempOutput = Join-Path $env:TEMP "pdfextract_$(Get-Random).txt"
+            $process = Start-Process -FilePath $pdftotextPath -ArgumentList "`"$FilePath`"", "`"$tempOutput`"" -Wait -NoNewWindow -PassThru
+
+            if ($process.ExitCode -eq 0 -and (Test-Path $tempOutput)) {
+                $text = Get-Content $tempOutput -Raw -Encoding UTF8
+                Remove-Item $tempOutput -Force -ErrorAction SilentlyContinue
+
+                if ($text -and $text.Trim().Length -gt 10) {
+                    return "=== PDF FILE: $([System.IO.Path]::GetFileName($FilePath)) ===`n`n$text"
+                }
+            }
+            # Clean up temp file if it exists
+            if (Test-Path $tempOutput) { Remove-Item $tempOutput -Force -ErrorAction SilentlyContinue }
+        } catch {
+            # pdftotext failed, continue to fallback
+        }
+    }
+
+    # Method 2: Try using Word to open and extract PDF text (Word 2013+ can read PDFs)
     # Note: Word PDF conversion can be slow/unreliable, so we use a background job with timeout
-    $word = $null
-    $doc = $null
     $timeoutSeconds = 30
 
     try {
@@ -311,14 +331,12 @@ function Get-PdfText {
             Get-Process -Name "WINWORD" -ErrorAction SilentlyContinue | Where-Object {
                 $_.StartTime -gt (Get-Date).AddSeconds(-$timeoutSeconds - 5)
             } | Stop-Process -Force -ErrorAction SilentlyContinue
-
-            Write-Host "[WARN] PDF extraction timed out after ${timeoutSeconds}s: $FilePath" -ForegroundColor Yellow
         }
     } catch {
         # Word method failed, continue to fallback
     }
 
-    # Method 2: Fall back to metadata only
+    # Method 3: Fall back to metadata only
     try {
         $shell = New-Object -ComObject Shell.Application
         $folder = $shell.Namespace((Split-Path $FilePath))
@@ -334,8 +352,8 @@ function Get-PdfText {
         if ($author) { $info += "Author: $author`n" }
         if ($pages) { $info += "Pages: $pages`n" }
 
-        $info += "`n[PDF text extraction via Word failed - only metadata available]"
-        $info += "`n[Install Word 2013+ for full PDF text extraction]"
+        $info += "`n[PDF text extraction failed - only metadata available]"
+        $info += "`n[Install pdftotext (Poppler) via Install-PdfToText.ps1 for full extraction]"
 
         return $info
 
@@ -343,6 +361,38 @@ function Get-PdfText {
         $fileInfo = Get-Item $FilePath
         return "[PDF file: $($fileInfo.Name), Size: $($fileInfo.Length) bytes - text extraction not available]"
     }
+}
+
+function Find-PdfToText {
+    # Check 1: PATH
+    $cmd = Get-Command pdftotext -ErrorAction SilentlyContinue
+    if ($cmd) { return $cmd.Source }
+
+    # Check 2: .pdftotext-path config file (created by Install-PdfToText.ps1)
+    $scriptDir = Split-Path -Parent $PSScriptRoot
+    $configPath = Join-Path $scriptDir ".pdftotext-path"
+    if (Test-Path $configPath) {
+        $savedPath = Get-Content $configPath -Raw -ErrorAction SilentlyContinue
+        if ($savedPath -and (Test-Path $savedPath.Trim())) {
+            return $savedPath.Trim()
+        }
+    }
+
+    # Check 3: Common portable locations
+    $locations = @(
+        "$HOME\Tools\poppler\Library\bin\pdftotext.exe",
+        "$HOME\Tools\poppler\bin\pdftotext.exe",
+        "$HOME\poppler\Library\bin\pdftotext.exe",
+        "$HOME\poppler\bin\pdftotext.exe",
+        "$env:LOCALAPPDATA\poppler\Library\bin\pdftotext.exe",
+        "$scriptDir\poppler\Library\bin\pdftotext.exe"
+    )
+
+    foreach ($loc in $locations) {
+        if (Test-Path $loc) { return $loc }
+    }
+
+    return $null
 }
 
 function Get-RtfText {
