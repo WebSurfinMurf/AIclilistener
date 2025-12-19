@@ -221,12 +221,13 @@ function Invoke-CodexRequest {
     $timeout = if ($options.timeout_seconds) { $options.timeout_seconds } else { $script:Config.TimeoutSeconds }
 
     try {
-        # Setup process
+        # Setup process - use cmd.exe to handle .cmd/.bat wrappers
         $psi = New-Object System.Diagnostics.ProcessStartInfo
-        $psi.FileName = $script:CodexPath
-        $psi.Arguments = ($codexArgs | ForEach-Object {
+        $psi.FileName = "cmd.exe"
+        $codexArgsStr = ($codexArgs | ForEach-Object {
             if ($_ -match '\s') { "`"$_`"" } else { $_ }
         }) -join " "
+        $psi.Arguments = "/c `"$script:CodexPath`" $codexArgsStr"
         $psi.WorkingDirectory = $workDir
         $psi.RedirectStandardOutput = $true
         $psi.RedirectStandardError = $true
