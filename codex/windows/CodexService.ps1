@@ -24,7 +24,7 @@
 
 .NOTES
     Author: AI CLI Listener Project
-    Version: 1.3.0 - Added -Verbose diagnostic logging
+    Version: 1.3.1 - Auto-switch from .ps1 to .cmd shim for stdin compatibility
     Requires: OpenAI Codex CLI installed and on PATH
 
     IMPORTANT: PowerShell 5.1 has a known bug where multiline strings passed
@@ -88,7 +88,7 @@ $script:Config = @{
     TimeoutSeconds = $TimeoutSeconds
     WorkingDirectory = $WorkingDirectory
     TempRoot = Join-Path $env:TEMP "codex-sessions"
-    Version = "1.3.0"
+    Version = "1.3.1"
 }
 
 # Ensure temp directory exists
@@ -121,12 +121,24 @@ function Test-CodexInstallation {
         Write-Host "[INFO]   Path: $script:CodexPath" -ForegroundColor Green
         Write-Host "[INFO]   Type: $($codexCmd.CommandType)" -ForegroundColor Green
 
-        # If it's a script/batch file, show what it wraps
+        # If it's a .ps1 wrapper, check for .cmd alternative (better stdin handling)
         if ($codexCmd.CommandType -eq "Application") {
             $ext = [System.IO.Path]::GetExtension($script:CodexPath).ToLower()
             Write-Host "[INFO]   Extension: $ext" -ForegroundColor Green
-            if ($ext -in @(".cmd", ".bat", ".ps1")) {
-                Write-Host "[WARN]   This is a wrapper script - stdin piping may have issues" -ForegroundColor Yellow
+
+            if ($ext -eq ".ps1") {
+                # .ps1 shims have issues with stdin piping in subprocesses
+                # Check if there's a .cmd alternative
+                $cmdPath = [System.IO.Path]::ChangeExtension($script:CodexPath, ".cmd")
+                if (Test-Path $cmdPath) {
+                    Write-Host "[INFO]   Found .cmd alternative: $cmdPath" -ForegroundColor Green
+                    Write-Host "[INFO]   Switching to .cmd (better stdin piping support)" -ForegroundColor Green
+                    $script:CodexPath = $cmdPath
+                } else {
+                    Write-Host "[WARN]   .ps1 wrapper may have stdin piping issues in subprocesses" -ForegroundColor Yellow
+                }
+            } elseif ($ext -in @(".cmd", ".bat")) {
+                Write-Host "[INFO]   .cmd/.bat wrapper - stdin piping should work" -ForegroundColor Green
             }
         }
 

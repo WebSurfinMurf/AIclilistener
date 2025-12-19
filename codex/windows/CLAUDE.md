@@ -317,6 +317,12 @@ $prompt | & codex exec --json
 
 ## Version History
 
+### v1.3.1
+- **Fix**: Auto-switch from `.ps1` to `.cmd` shim when both exist
+- `.ps1` npm shims break stdin piping in PowerShell subprocesses
+- `.cmd` shims call node directly, preserving stdin flow
+- Startup now logs which shim is being used and any auto-switching
+
 ### v1.3.0
 - Added `-Verbose` flag for detailed diagnostic logging
 - Enhanced startup checks: shows codex executable type, extension, and warns about wrapper scripts
