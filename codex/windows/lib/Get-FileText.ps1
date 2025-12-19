@@ -312,5 +312,4 @@ function Get-RtfText {
     }
 }
 
-# Export for dot-sourcing
-Export-ModuleMember -Function Get-FileText -ErrorAction SilentlyContinue
+# Function is available after dot-sourcing this file
