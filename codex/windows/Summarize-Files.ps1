@@ -171,6 +171,12 @@ function Send-CodexRequest {
     }
 }
 
+# Load the file text extraction helper
+$libPath = Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) "lib\Get-FileText.ps1"
+if (Test-Path $libPath) {
+    . $libPath
+}
+
 function Get-FilePreview {
     param(
         [string]$FilePath,
@@ -182,6 +188,12 @@ function Get-FilePreview {
     }
 
     try {
+        # Use Get-FileText if available (handles xlsx, pptx, docx, pdf, etc.)
+        if (Get-Command Get-FileText -ErrorAction SilentlyContinue) {
+            return Get-FileText -FilePath $FilePath -MaxChars $MaxChars
+        }
+
+        # Fallback to simple text reading
         $content = Get-Content -Path $FilePath -Raw -ErrorAction Stop
         if ($content.Length -gt $MaxChars) {
             $content = $content.Substring(0, $MaxChars) + "`n... [truncated at $MaxChars chars]"
