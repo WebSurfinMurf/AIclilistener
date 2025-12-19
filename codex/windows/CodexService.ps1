@@ -24,7 +24,7 @@
 
 .NOTES
     Author: AI CLI Listener Project
-    Version: 1.4.1 - Full disk read access, no approval prompts (via -c config)
+    Version: 1.4.2 - Set working root to C:\ for full filesystem access
     Requires: OpenAI Codex CLI installed and on PATH
 
     IMPORTANT: PowerShell 5.1 has a known bug where multiline strings passed
@@ -88,7 +88,7 @@ $script:Config = @{
     TimeoutSeconds = $TimeoutSeconds
     WorkingDirectory = $WorkingDirectory
     TempRoot = Join-Path $env:TEMP "codex-sessions"
-    Version = "1.4.1"
+    Version = "1.4.2"
 }
 
 # Ensure temp directory exists
@@ -296,6 +296,10 @@ function Invoke-CodexRequest {
     $codexArgs += 'sandbox_permissions=["disk-full-read-access"]'
     $codexArgs += "-c"
     $codexArgs += 'approval_policy="never"'
+
+    # Set working root to system drive (C:\) so codex can access all files
+    $codexArgs += "-C"
+    $codexArgs += "$env:SystemDrive\"
 
     # Save prompt to temp file
     $promptText = $Request.prompt
