@@ -84,15 +84,18 @@ function Test-CodexInstallation {
         return $false
     }
 
-    # Check auth status
+    # Check auth status (codex login status returns 0 if logged in)
     Write-Host "[INFO] Checking Codex authentication..." -ForegroundColor Yellow
     try {
-        $authStatus = & codex auth status 2>&1
+        $authOutput = & codex login status 2>&1
         if ($LASTEXITCODE -eq 0) {
-            Write-Host "[INFO] Codex auth: $authStatus" -ForegroundColor Green
+            Write-Host "[INFO] Codex: Authenticated" -ForegroundColor Green
+            if ($authOutput) {
+                Write-Host "[INFO] $authOutput" -ForegroundColor Green
+            }
         } else {
-            Write-Host "[WARN] Codex auth issue: $authStatus" -ForegroundColor Yellow
-            Write-Host "[WARN] You may need to run: codex auth login" -ForegroundColor Yellow
+            Write-Host "[WARN] Codex: Not authenticated" -ForegroundColor Yellow
+            Write-Host "[WARN] Run 'codex' to login, or set OPENAI_API_KEY" -ForegroundColor Yellow
         }
     } catch {
         Write-Host "[WARN] Could not check Codex auth status" -ForegroundColor Yellow
