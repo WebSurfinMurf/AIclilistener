@@ -82,14 +82,18 @@ function Write-PipeResponse {
 
 # Verify Codex is available and authenticated
 function Test-CodexInstallation {
-    # Check if codex command exists
+    # Check if codex command exists and get full path
     try {
-        $version = & codex --version 2>&1
+        $codexCmd = Get-Command codex -ErrorAction Stop
+        $script:CodexPath = $codexCmd.Source
+
+        $version = & $script:CodexPath --version 2>&1
         if ($LASTEXITCODE -ne 0) {
             Write-Host "[ERROR] Codex CLI not found. Ensure 'codex' is on PATH." -ForegroundColor Red
             return $false
         }
         Write-Host "[INFO] Codex CLI found: $version" -ForegroundColor Green
+        Write-Host "[INFO] Codex path: $script:CodexPath" -ForegroundColor Green
     } catch {
         Write-Host "[ERROR] Codex CLI not found. Ensure 'codex' is on PATH." -ForegroundColor Red
         return $false
@@ -219,7 +223,7 @@ function Invoke-CodexRequest {
     try {
         # Setup process
         $psi = New-Object System.Diagnostics.ProcessStartInfo
-        $psi.FileName = "codex"
+        $psi.FileName = $script:CodexPath
         $psi.Arguments = ($codexArgs | ForEach-Object {
             if ($_ -match '\s') { "`"$_`"" } else { $_ }
         }) -join " "
