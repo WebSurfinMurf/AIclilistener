@@ -24,8 +24,13 @@
 
 .NOTES
     Author: AI CLI Listener Project
-    Version: 1.2.0 - Raw byte I/O for PS 5.1 compatibility
+    Version: 1.2.2 - Stdin piping for PS 5.1 multiline arg bug
     Requires: OpenAI Codex CLI installed and on PATH
+
+    IMPORTANT: PowerShell 5.1 has a known bug where multiline strings passed
+    as command-line arguments to native executables get word-split incorrectly.
+    This service works around the bug by piping prompts via stdin instead of
+    passing them as arguments. See CLAUDE.md for details.
 #>
 
 param(
@@ -61,7 +66,7 @@ $script:Config = @{
     TimeoutSeconds = $TimeoutSeconds
     WorkingDirectory = $WorkingDirectory
     TempRoot = Join-Path $env:TEMP "codex-sessions"
-    Version = "1.2.0"
+    Version = "1.2.2"
 }
 
 # Ensure temp directory exists

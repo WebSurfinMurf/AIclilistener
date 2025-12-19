@@ -1,53 +1,89 @@
 # Codex CLI Named Pipe Service for Windows
 
-A PowerShell-based persistent service that listens for JSON requests via Windows Named Pipes, invokes OpenAI Codex CLI, and returns JSON responses.
+A PowerShell-based persistent service that listens for JSON requests via Windows Named Pipes, invokes OpenAI Codex CLI, and returns JSON responses. Designed for corporate Windows environments with no additional dependencies.
 
 ---
 
-## QUICK TEST (5 minutes)
+## Getting Started
 
-### Get the code:
+### 1. Clone the repository
 ```powershell
 git clone https://github.com/WebSurfinMurf/AIclilistener.git
 cd AIclilistener\codex\windows
 ```
 
-### Terminal 1 - Start the service:
+### 2. Run the demo (recommended first step)
 ```powershell
+.\demo.ps1
+```
+
+The demo will:
+- Check if the service is running (prompt to start if not)
+- Send a request to summarize the project's CLAUDE.md file
+- Display the AI-generated executive summary
+
+### 3. Start using it
+```powershell
+# Terminal 1 - Start the service
 .\Start-Service.bat
-```
 
-### Terminal 2 - Send requests:
-```powershell
-# Health check
-.\CodexClient.ps1 -Command ping
-
-# Simple prompt (read-only)
+# Terminal 2 - Send requests
 .\CodexClient.ps1 -Prompt "Explain what recursion is"
-
-# Create a file (requires full-auto)
-.\CodexClient.ps1 -Prompt "Create a hello.py that prints Hello World" -Sandbox full-auto
-
-# Check service status
-.\CodexClient.ps1 -Command status
-
-# Shutdown service
-.\CodexClient.ps1 -Command shutdown
 ```
 
-### Batch File Summarization:
+---
+
+## Install as a Codex Skill (Optional)
+
+You can teach Codex CLI to use AIclilistener automatically by installing the skill:
+
 ```powershell
-# Create a CSV with file paths in column 1
+# Create the skills directory
+mkdir -Force "$env:USERPROFILE\.codex\skills\aiclilistener"
+
+# Copy the skill file
+copy skill\SKILL.md "$env:USERPROFILE\.codex\skills\aiclilistener\"
+```
+
+Then enable skills in your Codex config (`~/.codex/config.toml`):
+```toml
+[experimental]
+skills = true
+```
+
+Or run Codex with: `codex --enable skills`
+
+Now Codex can use AIclilistener to farm out work (e.g., summarizing large files without context pollution).
+
+---
+
+## Quick Test Examples
+
+### Service commands:
+```powershell
+.\CodexClient.ps1 -Command ping      # Health check
+.\CodexClient.ps1 -Command status    # Service info
+.\CodexClient.ps1 -Command shutdown  # Stop service
+```
+
+### Simple prompts:
+```powershell
+.\CodexClient.ps1 -Prompt "Explain recursion in Python"
+.\CodexClient.ps1 -Prompt "Create hello.py" -Sandbox full-auto
+```
+
+### Batch file summarization:
+```powershell
+# Create a CSV with file paths
 @"
 FilePath,Category
 C:\Windows\System32\drivers\etc\hosts,System
-$env:USERPROFILE\.gitconfig,Config
 "@ | Out-File files.csv -Encoding UTF8
 
-# Run summarizer (service must be running)
+# Summarize all files
 .\Summarize-Files.ps1 -CsvPath files.csv
 
-# Check output: files_summarized.csv
+# Output: files_summarized.csv with Summary column
 ```
 
 ---

@@ -268,7 +268,32 @@ Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process
 
 ---
 
+## Known Issues & Workarounds
+
+### PowerShell 5.1 Multiline Argument Bug
+
+**Issue**: PowerShell 5.1 has a known bug where multiline strings passed as command-line arguments to native executables (like Node.js, which powers Codex CLI) get incorrectly word-split, causing the receiving process to see each line as a separate argument.
+
+**Symptom**: Error like `unexpected argument 'world' found` when sending prompts containing newlines or special characters.
+
+**Solution**: Pipe the prompt via stdin instead of passing as a command-line argument:
+```powershell
+# BAD - breaks with multiline prompts
+& codex exec --json "multi`nline`nprompt"
+
+# GOOD - pipe via stdin
+$prompt | & codex exec --json
+```
+
+**Reference**: This is a well-documented limitation of PS 5.1's process spawning. The fix is implemented in CodexService.ps1 v1.2.2+.
+
+---
+
 ## Version History
+
+### v1.2.2
+- Fixed PS 5.1 multiline argument bug by piping prompt via stdin
+- Thanks to Gemini peer review for identifying the root cause
 
 ### v1.2.1
 - Refactored Summarize-Files.ps1 to use CodexClient.ps1 for consistent pipe I/O
