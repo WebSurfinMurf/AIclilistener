@@ -24,7 +24,7 @@
 
 .NOTES
     Author: AI CLI Listener Project
-    Version: 1.4.2 - Set working root to C:\ for full filesystem access
+    Version: 1.4.3 - Fix Ctrl+C to properly exit service
     Requires: OpenAI Codex CLI installed and on PATH
 
     IMPORTANT: PowerShell 5.1 has a known bug where multiline strings passed
@@ -67,19 +67,12 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 
 # Handle Ctrl+C gracefully
 $script:ExitRequested = $false
-[Console]::TreatControlCAsInput = $false
+# Treat Ctrl+C as input so we can detect it in our polling loop
+[Console]::TreatControlCAsInput = $true
 
 $null = Register-EngineEvent -SourceIdentifier PowerShell.Exiting -Action {
     $script:ExitRequested = $true
     $script:Running = $false
-}
-
-# Also try to catch Ctrl+C via trap
-trap {
-    Write-Host "`n[INFO] Interrupt received, shutting down..." -ForegroundColor Yellow
-    $script:Running = $false
-    $script:ExitRequested = $true
-    continue
 }
 
 # Configuration
@@ -88,7 +81,7 @@ $script:Config = @{
     TimeoutSeconds = $TimeoutSeconds
     WorkingDirectory = $WorkingDirectory
     TempRoot = Join-Path $env:TEMP "codex-sessions"
-    Version = "1.4.2"
+    Version = "1.4.3"
 }
 
 # Ensure temp directory exists
@@ -602,8 +595,33 @@ function Start-CodexService {
 
                 Write-Host "[LISTEN] Waiting for client on \\.\pipe\$($script:Config.PipeName)..." -ForegroundColor Gray
 
-                # Wait for connection
-                $pipeServer.WaitForConnection()
+                # Wait for connection using async with polling (allows Ctrl+C to work)
+                $asyncResult = $pipeServer.BeginWaitForConnection($null, $null)
+
+                # Poll until connected or exit requested
+                while (-not $asyncResult.IsCompleted -and $script:Running) {
+                    Start-Sleep -Milliseconds 100
+
+                    # Check for Ctrl+C
+                    if ([Console]::KeyAvailable) {
+                        $key = [Console]::ReadKey($true)
+                        if ($key.Key -eq 'C' -and $key.Modifiers -eq 'Control') {
+                            Write-Host "`n[INFO] Ctrl+C detected, shutting down..." -ForegroundColor Yellow
+                            $script:Running = $false
+                            break
+                        }
+                    }
+                }
+
+                # If we're shutting down, clean up and exit
+                if (-not $script:Running) {
+                    $pipeServer.Dispose()
+                    $pipeServer = $null
+                    break
+                }
+
+                # Complete the connection
+                $pipeServer.EndWaitForConnection($asyncResult)
 
                 Write-Host "[CONNECT] Client connected" -ForegroundColor Green
 
@@ -687,10 +705,17 @@ function Start-CodexService {
         if ($pipeServer) {
             $pipeServer.Dispose()
         }
+        # Restore console settings
+        [Console]::TreatControlCAsInput = $false
         Write-Host ""
         Write-Host "[INFO] Service stopped" -ForegroundColor Yellow
     }
 }
 
 # Run the service
-Start-CodexService
+try {
+    Start-CodexService
+} finally {
+    # Ensure console is restored even if service crashes
+    [Console]::TreatControlCAsInput = $false
+}
