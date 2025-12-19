@@ -42,16 +42,58 @@ Write-Host "----------------------------------------" -ForegroundColor Yellow
 Write-Host "METHOD 1: pdftotext (Poppler)" -ForegroundColor Yellow
 Write-Host "----------------------------------------" -ForegroundColor Yellow
 
-$pdftotext = Get-Command pdftotext -ErrorAction SilentlyContinue
-if ($pdftotext) {
-    Write-Host "[INFO] pdftotext found: $($pdftotext.Source)" -ForegroundColor Green
+# Look for pdftotext in multiple locations
+$pdftotextPath = $null
+
+# Check 1: PATH
+$pdftotextCmd = Get-Command pdftotext -ErrorAction SilentlyContinue
+if ($pdftotextCmd) {
+    $pdftotextPath = $pdftotextCmd.Source
+    Write-Host "[INFO] Found in PATH: $pdftotextPath" -ForegroundColor Green
+}
+
+# Check 2: .pdftotext-path config file (created by Install-PdfToText.ps1)
+if (-not $pdftotextPath) {
+    $configPath = Join-Path (Split-Path $MyInvocation.MyCommand.Path) ".pdftotext-path"
+    if (Test-Path $configPath) {
+        $savedPath = Get-Content $configPath -Raw
+        if ($savedPath -and (Test-Path $savedPath.Trim())) {
+            $pdftotextPath = $savedPath.Trim()
+            Write-Host "[INFO] Found via config file: $pdftotextPath" -ForegroundColor Green
+        }
+    }
+}
+
+# Check 3: Common portable locations
+if (-not $pdftotextPath) {
+    $portableLocations = @(
+        "$HOME\Tools\poppler\Library\bin\pdftotext.exe",
+        "$HOME\Tools\poppler\bin\pdftotext.exe",
+        "$HOME\poppler\Library\bin\pdftotext.exe",
+        "$HOME\poppler\bin\pdftotext.exe",
+        "$env:LOCALAPPDATA\poppler\Library\bin\pdftotext.exe",
+        "$(Split-Path $MyInvocation.MyCommand.Path)\poppler\Library\bin\pdftotext.exe"
+    )
+
+    foreach ($loc in $portableLocations) {
+        Write-Host "[INFO] Checking: $loc" -ForegroundColor Gray
+        if (Test-Path $loc) {
+            $pdftotextPath = $loc
+            Write-Host "[INFO] Found at portable location: $pdftotextPath" -ForegroundColor Green
+            break
+        }
+    }
+}
+
+if ($pdftotextPath) {
+    Write-Host "[INFO] pdftotext found: $pdftotextPath" -ForegroundColor Green
 
     $tempOutput = Join-Path $env:TEMP "pdftest_$(Get-Random).txt"
-    Write-Host "[INFO] Running: pdftotext `"$PdfPath`" `"$tempOutput`"" -ForegroundColor Gray
+    Write-Host "[INFO] Running: $pdftotextPath `"$PdfPath`" `"$tempOutput`"" -ForegroundColor Gray
 
     $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
     try {
-        & pdftotext $PdfPath $tempOutput 2>&1
+        & $pdftotextPath $PdfPath $tempOutput 2>&1
         $stopwatch.Stop()
 
         if (Test-Path $tempOutput) {
@@ -70,8 +112,12 @@ if ($pdftotext) {
         Write-Host "[FAIL] Error: $($_.Exception.Message)" -ForegroundColor Red
     }
 } else {
-    Write-Host "[SKIP] pdftotext not installed" -ForegroundColor Yellow
-    Write-Host "[TIP] Install with: choco install poppler" -ForegroundColor Gray
+    Write-Host "[SKIP] pdftotext not found in:" -ForegroundColor Yellow
+    Write-Host "  - PATH" -ForegroundColor Gray
+    Write-Host "  - .pdftotext-path config file" -ForegroundColor Gray
+    Write-Host "  - $HOME\Tools\poppler\" -ForegroundColor Gray
+    Write-Host "  - $HOME\poppler\" -ForegroundColor Gray
+    Write-Host "[TIP] Run: .\Install-PdfToText.ps1" -ForegroundColor Gray
 }
 
 Write-Host ""
