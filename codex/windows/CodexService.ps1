@@ -44,7 +44,7 @@ $script:Config = @{
     TimeoutSeconds = $TimeoutSeconds
     WorkingDirectory = $WorkingDirectory
     TempRoot = Join-Path $env:TEMP "codex-sessions"
-    Version = "1.0.0"
+    Version = "1.1.0"
 }
 
 # Ensure temp directory exists
@@ -324,6 +324,22 @@ function Invoke-ServiceCommand {
     }
 }
 
+# Create pipe security ACL (restrict to current user only)
+function New-PipeSecurity {
+    $pipeSecurity = New-Object System.IO.Pipes.PipeSecurity
+
+    # Allow current user full control
+    $currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+    $rule = New-Object System.IO.Pipes.PipeAccessRule(
+        $currentUser,
+        [System.IO.Pipes.PipeAccessRights]::ReadWrite,
+        [System.Security.AccessControl.AccessControlType]::Allow
+    )
+    $pipeSecurity.AddAccessRule($rule)
+
+    return $pipeSecurity
+}
+
 # Main service loop
 function Start-CodexService {
     Write-Host ""
@@ -341,83 +357,108 @@ function Start-CodexService {
         return
     }
 
+    # Create pipe security (current user only)
+    $pipeSecurity = New-PipeSecurity
+    $currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+    Write-Host "[SECURITY] Pipe restricted to: $currentUser" -ForegroundColor Yellow
+    Write-Host ""
+
     $script:StartTime = Get-Date
     $script:Running = $true
+    $pipeServer = $null
 
     Write-Host "[INFO] Service started. Waiting for connections..." -ForegroundColor Green
     Write-Host "[INFO] Press Ctrl+C to stop" -ForegroundColor Gray
     Write-Host ""
 
-    while ($script:Running) {
-        try {
-            # Create named pipe server (single connection at a time for simplicity)
-            $pipeServer = New-Object System.IO.Pipes.NamedPipeServerStream(
-                $script:Config.PipeName,
-                [System.IO.Pipes.PipeDirection]::InOut,
-                1,  # maxNumberOfServerInstances
-                [System.IO.Pipes.PipeTransmissionMode]::Byte,
-                [System.IO.Pipes.PipeOptions]::None
-            )
-
-            Write-Host "[LISTEN] Waiting for client on \\.\pipe\$($script:Config.PipeName)..." -ForegroundColor Gray
-
-            # Wait for connection
-            $pipeServer.WaitForConnection()
-
-            Write-Host "[CONNECT] Client connected" -ForegroundColor Green
-
-            # Setup streams
-            $reader = New-Object System.IO.StreamReader($pipeServer, [System.Text.Encoding]::UTF8)
-            $writer = New-Object System.IO.StreamWriter($pipeServer, [System.Text.Encoding]::UTF8)
-            $writer.AutoFlush = $true
-
+    try {
+        while ($script:Running) {
             try {
-                # Read request (single line JSON)
-                $requestLine = $reader.ReadLine()
+                # Create named pipe server with security ACL (current user only)
+                $pipeServer = New-Object System.IO.Pipes.NamedPipeServerStream(
+                    $script:Config.PipeName,
+                    [System.IO.Pipes.PipeDirection]::InOut,
+                    1,  # maxNumberOfServerInstances
+                    [System.IO.Pipes.PipeTransmissionMode]::Byte,
+                    [System.IO.Pipes.PipeOptions]::None,
+                    0,  # inBufferSize (default)
+                    0,  # outBufferSize (default)
+                    $pipeSecurity
+                )
 
-                if ($requestLine) {
-                    Write-Host "[REQUEST] Received: $($requestLine.Substring(0, [Math]::Min(100, $requestLine.Length)))..." -ForegroundColor Cyan
+                Write-Host "[LISTEN] Waiting for client on \\.\pipe\$($script:Config.PipeName)..." -ForegroundColor Gray
 
-                    try {
-                        $request = $requestLine | ConvertFrom-Json -AsHashtable
+                # Wait for connection
+                $pipeServer.WaitForConnection()
 
-                        # Route to appropriate handler
-                        if ($request.command) {
-                            Invoke-ServiceCommand -Request $request -Writer $writer
-                        } elseif ($request.prompt) {
-                            Invoke-CodexRequest -Request $request -Writer $writer
-                        } else {
+                Write-Host "[CONNECT] Client connected" -ForegroundColor Green
+
+                # Setup streams with explicit UTF-8 encoding
+                $reader = New-Object System.IO.StreamReader($pipeServer, [System.Text.Encoding]::UTF8)
+                $writer = New-Object System.IO.StreamWriter($pipeServer, [System.Text.Encoding]::UTF8)
+                $writer.AutoFlush = $true
+
+                try {
+                    # Read request (single line JSON)
+                    $requestLine = $reader.ReadLine()
+
+                    if ($requestLine) {
+                        Write-Host "[REQUEST] Received: $($requestLine.Substring(0, [Math]::Min(100, $requestLine.Length)))..." -ForegroundColor Cyan
+
+                        try {
+                            $request = $requestLine | ConvertFrom-Json -AsHashtable
+
+                            # Route to appropriate handler
+                            if ($request.command) {
+                                Invoke-ServiceCommand -Request $request -Writer $writer
+                            } elseif ($request.prompt) {
+                                Invoke-CodexRequest -Request $request -Writer $writer
+                            } else {
+                                $response = @{
+                                    status = "error"
+                                    error = "Invalid request: must contain 'prompt' or 'command'"
+                                } | ConvertTo-Json -Compress
+                                $writer.WriteLine($response)
+                            }
+                        } catch {
                             $response = @{
                                 status = "error"
-                                error = "Invalid request: must contain 'prompt' or 'command'"
+                                error = "Failed to parse JSON: $($_.Exception.Message)"
                             } | ConvertTo-Json -Compress
                             $writer.WriteLine($response)
                         }
-                    } catch {
-                        $response = @{
-                            status = "error"
-                            error = "Failed to parse JSON: $($_.Exception.Message)"
-                        } | ConvertTo-Json -Compress
-                        $writer.WriteLine($response)
                     }
+                } finally {
+                    $reader.Dispose()
+                    $writer.Dispose()
+                    $pipeServer.Dispose()
+                    $pipeServer = $null
+                    Write-Host "[DISCONNECT] Client disconnected" -ForegroundColor Gray
                 }
-            } finally {
-                $reader.Dispose()
-                $writer.Dispose()
-                $pipeServer.Dispose()
-                Write-Host "[DISCONNECT] Client disconnected" -ForegroundColor Gray
+
+            } catch [System.IO.IOException] {
+                # Pipe broken, client disconnected unexpectedly
+                Write-Host "[WARN] Client disconnected unexpectedly" -ForegroundColor Yellow
+                if ($pipeServer) {
+                    $pipeServer.Dispose()
+                    $pipeServer = $null
+                }
+            } catch {
+                Write-Host "[ERROR] $($_.Exception.Message)" -ForegroundColor Red
+                if ($pipeServer) {
+                    $pipeServer.Dispose()
+                    $pipeServer = $null
+                }
             }
-
-        } catch [System.IO.IOException] {
-            # Pipe broken, client disconnected unexpectedly
-            Write-Host "[WARN] Client disconnected unexpectedly" -ForegroundColor Yellow
-        } catch {
-            Write-Host "[ERROR] $($_.Exception.Message)" -ForegroundColor Red
         }
+    } finally {
+        # Ensure pipe is disposed on exit (Ctrl+C or shutdown)
+        if ($pipeServer) {
+            $pipeServer.Dispose()
+        }
+        Write-Host ""
+        Write-Host "[INFO] Service stopped" -ForegroundColor Yellow
     }
-
-    Write-Host ""
-    Write-Host "[INFO] Service stopped" -ForegroundColor Yellow
 }
 
 # Run the service

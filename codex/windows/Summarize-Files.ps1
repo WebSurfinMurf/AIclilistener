@@ -30,8 +30,12 @@
 .EXAMPLE
     .\Summarize-Files.ps1 -CsvPath "files.csv" -FileColumn "FilePath" -SummaryColumn "Description"
 
+.EXAMPLE
+    .\Summarize-Files.ps1 -CsvPath "files.csv" -Resume
+
 .NOTES
     Requires CodexService.ps1 to be running
+    Version: 1.1.0 - Added resume capability and incremental saving
 #>
 
 param(
@@ -46,7 +50,9 @@ param(
 
     [string]$SummaryColumn = "Summary",
 
-    [int]$MaxChars = 10000
+    [int]$MaxChars = 10000,
+
+    [switch]$Resume
 )
 
 # Ensure UTF-8
@@ -227,16 +233,49 @@ if (-not $OutputPath) {
 }
 
 Write-Log "Output will be saved to: $OutputPath" "Info"
-Write-Log "Processing $($csv.Count) rows..." "Info"
+
+# Check for resume capability
+$alreadyProcessed = @{}
+$outputColumns = $columns + @($SummaryColumn)
+$isFirstWrite = $true
+
+if ($Resume -and (Test-Path $OutputPath)) {
+    Write-Log "Resume mode: Loading previously processed files..." "Info"
+    $existing = Import-Csv -Path $OutputPath -ErrorAction SilentlyContinue
+    if ($existing) {
+        foreach ($row in $existing) {
+            $fp = $row.$FileColumn
+            if ($fp -and $row.$SummaryColumn -and $row.$SummaryColumn -notlike "[ERROR]*") {
+                $alreadyProcessed[$fp] = $row.$SummaryColumn
+            }
+        }
+        Write-Log "Found $($alreadyProcessed.Count) already processed files" "Success"
+        $isFirstWrite = $false
+    }
+} elseif (Test-Path $OutputPath) {
+    # Not resume mode, clear existing output
+    Remove-Item $OutputPath -Force
+}
+
+$toProcess = $csv.Count - $alreadyProcessed.Count
+Write-Log "Processing $toProcess of $($csv.Count) rows..." "Info"
 Write-Host ""
 
 # Process each row
-$results = @()
 $rowNum = 0
+$processedCount = 0
+$skippedCount = 0
 
 foreach ($row in $csv) {
     $rowNum++
     $filePath = $row.$FileColumn
+
+    # Check if already processed (resume mode)
+    if ($alreadyProcessed.ContainsKey($filePath)) {
+        $skippedCount++
+        Write-Log "SKIP $rowNum / $($csv.Count): $filePath (already processed)" "Info"
+        continue
+    }
 
     Write-Host "========================================" -ForegroundColor Yellow
     Write-Log "ROW $rowNum / $($csv.Count): $filePath" "Info"
@@ -252,7 +291,10 @@ foreach ($row in $csv) {
     if (-not $filePath -or -not (Test-Path $filePath)) {
         Write-Log "File not found: $filePath" "Warning"
         $resultRow[$SummaryColumn] = "[FILE NOT FOUND]"
-        $results += [PSCustomObject]$resultRow
+        # Save incrementally
+        [PSCustomObject]$resultRow | Export-Csv -Path $OutputPath -NoTypeInformation -Encoding UTF8 -Append:(-not $isFirstWrite)
+        $isFirstWrite = $false
+        $processedCount++
         continue
     }
 
@@ -261,7 +303,10 @@ foreach ($row in $csv) {
     if (-not $fileContent) {
         Write-Log "Could not read file: $filePath" "Warning"
         $resultRow[$SummaryColumn] = "[COULD NOT READ FILE]"
-        $results += [PSCustomObject]$resultRow
+        # Save incrementally
+        [PSCustomObject]$resultRow | Export-Csv -Path $OutputPath -NoTypeInformation -Encoding UTF8 -Append:(-not $isFirstWrite)
+        $isFirstWrite = $false
+        $processedCount++
         continue
     }
 
@@ -310,7 +355,10 @@ Keep the summary brief and technical.
         Write-Log "Failed to get summary" "Error"
     }
 
-    $results += [PSCustomObject]$resultRow
+    # Save incrementally (crash-safe)
+    [PSCustomObject]$resultRow | Export-Csv -Path $OutputPath -NoTypeInformation -Encoding UTF8 -Append:(-not $isFirstWrite)
+    $isFirstWrite = $false
+    $processedCount++
 
     # Small delay between requests
     Start-Sleep -Milliseconds 500
@@ -318,16 +366,21 @@ Keep the summary brief and technical.
     Write-Host ""
 }
 
-# Export results
+# Final summary
 Write-Host "========================================" -ForegroundColor Green
-Write-Log "COMPLETE - Processed $($csv.Count) rows" "Success"
+Write-Log "COMPLETE" "Success"
+Write-Log "  Processed: $processedCount" "Success"
+Write-Log "  Skipped (already done): $skippedCount" "Info"
+Write-Log "  Total rows: $($csv.Count)" "Info"
 Write-Host "========================================" -ForegroundColor Green
-
-$results | Export-Csv -Path $OutputPath -NoTypeInformation -Encoding UTF8
 
 Write-Log "Results saved to: $OutputPath" "Success"
 Write-Host ""
 
-# Show preview of results
-Write-Log "Preview of results:" "Info"
-$results | Select-Object -First 3 | Format-Table -AutoSize
+# Show preview of output
+if (Test-Path $OutputPath) {
+    Write-Log "Preview of output:" "Info"
+    Import-Csv $OutputPath | Select-Object -First 3 | Format-Table -AutoSize
+}
+
+Write-Log "TIP: Use -Resume flag to continue from where you left off if interrupted" "Info"

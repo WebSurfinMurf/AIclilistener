@@ -1,5 +1,22 @@
 # Codex Windows Service - Testing Context
 
+## Version 1.1.0 Changes (Gemini Peer Review)
+
+### Security Improvements
+- **Pipe ACLs**: Named pipe now restricted to current user only via `PipeSecurity`
+- Other users on the machine cannot connect to the service
+
+### Robustness Improvements
+- **Better cleanup**: Main loop wrapped in try/finally to ensure pipe disposal on Ctrl+C
+- **Zombie pipe prevention**: Explicit disposal in all error paths
+
+### Summarize-Files.ps1 Improvements
+- **Resume capability**: Use `-Resume` flag to continue from where you left off
+- **Incremental saving**: Results saved to disk after each file (crash-safe)
+- **Skip already processed**: Files with valid summaries are skipped on resume
+
+---
+
 ## Quick Start for Testing
 
 ### 1. Get the Code
