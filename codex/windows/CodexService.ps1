@@ -38,6 +38,23 @@ param(
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
+# Handle Ctrl+C gracefully
+$script:ExitRequested = $false
+[Console]::TreatControlCAsInput = $false
+
+$null = Register-EngineEvent -SourceIdentifier PowerShell.Exiting -Action {
+    $script:ExitRequested = $true
+    $script:Running = $false
+}
+
+# Also try to catch Ctrl+C via trap
+trap {
+    Write-Host "`n[INFO] Interrupt received, shutting down..." -ForegroundColor Yellow
+    $script:Running = $false
+    $script:ExitRequested = $true
+    continue
+}
+
 # Configuration
 $script:Config = @{
     PipeName = $PipeName
@@ -52,19 +69,36 @@ if (-not (Test-Path $script:Config.TempRoot)) {
     New-Item -Path $script:Config.TempRoot -ItemType Directory -Force | Out-Null
 }
 
-# Verify Codex is available
+# Verify Codex is available and authenticated
 function Test-CodexInstallation {
+    # Check if codex command exists
     try {
         $version = & codex --version 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "[ERROR] Codex CLI not found. Ensure 'codex' is on PATH." -ForegroundColor Red
+            return $false
+        }
+        Write-Host "[INFO] Codex CLI found: $version" -ForegroundColor Green
+    } catch {
+        Write-Host "[ERROR] Codex CLI not found. Ensure 'codex' is on PATH." -ForegroundColor Red
+        return $false
+    }
+
+    # Check auth status
+    Write-Host "[INFO] Checking Codex authentication..." -ForegroundColor Yellow
+    try {
+        $authStatus = & codex auth status 2>&1
         if ($LASTEXITCODE -eq 0) {
-            Write-Host "[INFO] Codex CLI found: $version" -ForegroundColor Green
-            return $true
+            Write-Host "[INFO] Codex auth: $authStatus" -ForegroundColor Green
+        } else {
+            Write-Host "[WARN] Codex auth issue: $authStatus" -ForegroundColor Yellow
+            Write-Host "[WARN] You may need to run: codex auth login" -ForegroundColor Yellow
         }
     } catch {
-        # Codex not found
+        Write-Host "[WARN] Could not check Codex auth status" -ForegroundColor Yellow
     }
-    Write-Host "[ERROR] Codex CLI not found. Ensure 'codex' is on PATH." -ForegroundColor Red
-    return $false
+
+    return $true
 }
 
 # Strip ANSI escape codes from output
@@ -258,12 +292,14 @@ function Invoke-CodexRequest {
         }
 
         $Writer.WriteLine($response)
+        $Writer.Flush()
         Write-Host "[JOB $jobId] Completed in ${duration}ms" -ForegroundColor Green
 
     } catch {
         $duration = [long]((Get-Date) - $startTime).TotalMilliseconds
         $response = New-JsonResponse -Id $jobId -Status "error" -Error $_.Exception.Message -DurationMs $duration
         $Writer.WriteLine($response)
+        $Writer.Flush()
         Write-Host "[JOB $jobId] Failed: $($_.Exception.Message)" -ForegroundColor Red
     } finally {
         # Cleanup temp directory if we created one
@@ -293,6 +329,7 @@ function Invoke-ServiceCommand {
                 timestamp = (Get-Date).ToString("o")
             } | ConvertTo-Json -Compress
             $Writer.WriteLine($response)
+            $Writer.Flush()
         }
         "status" {
             $response = @{
@@ -305,6 +342,7 @@ function Invoke-ServiceCommand {
                 uptime_seconds = [int]((Get-Date) - $script:StartTime).TotalSeconds
             } | ConvertTo-Json -Compress
             $Writer.WriteLine($response)
+            $Writer.Flush()
         }
         "shutdown" {
             $response = @{
@@ -312,6 +350,7 @@ function Invoke-ServiceCommand {
                 message = "Shutting down..."
             } | ConvertTo-Json -Compress
             $Writer.WriteLine($response)
+            $Writer.Flush()
             $script:Running = $false
         }
         default {
@@ -320,6 +359,7 @@ function Invoke-ServiceCommand {
                 error = "Unknown command: $($Request.command)"
             } | ConvertTo-Json -Compress
             $Writer.WriteLine($response)
+            $Writer.Flush()
         }
     }
 }
@@ -400,13 +440,32 @@ function Start-CodexService {
 
                 try {
                     # Read request (single line JSON)
+                    Write-Host "[DEBUG] Waiting for request data..." -ForegroundColor Gray
                     $requestLine = $reader.ReadLine()
+                    Write-Host "[DEBUG] ReadLine returned" -ForegroundColor Gray
 
                     if ($requestLine) {
-                        Write-Host "[REQUEST] Received: $($requestLine.Substring(0, [Math]::Min(100, $requestLine.Length)))..." -ForegroundColor Cyan
+                        $displayLen = [Math]::Min(100, $requestLine.Length)
+                        Write-Host "[REQUEST] Received ($($requestLine.Length) chars): $($requestLine.Substring(0, $displayLen))..." -ForegroundColor Cyan
 
                         try {
-                            $request = $requestLine | ConvertFrom-Json -AsHashtable
+                            # Parse JSON - PS 5.1 compatible (no -AsHashtable)
+                            $jsonObj = $requestLine | ConvertFrom-Json
+
+                            # Convert PSObject to hashtable manually for PS 5.1 compatibility
+                            $request = @{}
+                            $jsonObj.PSObject.Properties | ForEach-Object {
+                                $request[$_.Name] = $_.Value
+                            }
+
+                            # Convert nested options object if present
+                            if ($request.options -and $request.options -is [PSObject]) {
+                                $opts = @{}
+                                $request.options.PSObject.Properties | ForEach-Object {
+                                    $opts[$_.Name] = $_.Value
+                                }
+                                $request.options = $opts
+                            }
 
                             # Route to appropriate handler
                             if ($request.command) {
@@ -419,14 +478,19 @@ function Start-CodexService {
                                     error = "Invalid request: must contain 'prompt' or 'command'"
                                 } | ConvertTo-Json -Compress
                                 $writer.WriteLine($response)
+                                $writer.Flush()
                             }
                         } catch {
+                            Write-Host "[ERROR] JSON parse failed: $($_.Exception.Message)" -ForegroundColor Red
                             $response = @{
                                 status = "error"
                                 error = "Failed to parse JSON: $($_.Exception.Message)"
                             } | ConvertTo-Json -Compress
                             $writer.WriteLine($response)
+                            $writer.Flush()
                         }
+                    } else {
+                        Write-Host "[WARN] Empty request received" -ForegroundColor Yellow
                     }
                 } finally {
                     $reader.Dispose()

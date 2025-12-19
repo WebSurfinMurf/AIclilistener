@@ -87,6 +87,8 @@ function Send-CodexRequest {
             # Send request
             Write-Host "[CLIENT] Sending request..." -ForegroundColor Cyan
             $writer.WriteLine($RequestJson)
+            $writer.Flush()  # Explicit flush for PS 5.1 compatibility
+            Write-Host "[CLIENT] Request sent, waiting for response..." -ForegroundColor Cyan
 
             # Read all responses until pipe closes
             $responses = @()
