@@ -24,20 +24,42 @@
 
 .NOTES
     Author: AI CLI Listener Project
-    Version: 1.2.2 - Stdin piping for PS 5.1 multiline arg bug
+    Version: 1.3.0 - Added -Verbose diagnostic logging
     Requires: OpenAI Codex CLI installed and on PATH
 
     IMPORTANT: PowerShell 5.1 has a known bug where multiline strings passed
     as command-line arguments to native executables get word-split incorrectly.
     This service works around the bug by piping prompts via stdin instead of
     passing them as arguments. See CLAUDE.md for details.
+
+    TROUBLESHOOTING: Run with -Verbose to see detailed diagnostic output:
+        .\CodexService.ps1 -Verbose
 #>
 
 param(
     [string]$PipeName = "codex-service",
     [int]$TimeoutSeconds = 300,
-    [string]$WorkingDirectory = $PWD.Path
+    [string]$WorkingDirectory = $PWD.Path,
+    [switch]$Verbose
 )
+
+# Diagnostic logging helper
+function Write-DiagLog {
+    param([string]$Message, [string]$Level = "DEBUG")
+    if ($script:VerboseLogging) {
+        $timestamp = Get-Date -Format "HH:mm:ss.fff"
+        $color = switch ($Level) {
+            "DEBUG" { "Gray" }
+            "INFO"  { "White" }
+            "WARN"  { "Yellow" }
+            "ERROR" { "Red" }
+            default { "Gray" }
+        }
+        Write-Host "[$timestamp][$Level] $Message" -ForegroundColor $color
+    }
+}
+
+$script:VerboseLogging = $Verbose
 
 # Ensure UTF-8 encoding for JSON handling
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -66,7 +88,7 @@ $script:Config = @{
     TimeoutSeconds = $TimeoutSeconds
     WorkingDirectory = $WorkingDirectory
     TempRoot = Join-Path $env:TEMP "codex-sessions"
-    Version = "1.2.2"
+    Version = "1.3.0"
 }
 
 # Ensure temp directory exists
@@ -87,38 +109,74 @@ function Write-PipeResponse {
 
 # Verify Codex is available and authenticated
 function Test-CodexInstallation {
+    Write-Host "[CHECK] Verifying Codex installation..." -ForegroundColor Yellow
+
     # Check if codex command exists and get full path
     try {
         $codexCmd = Get-Command codex -ErrorAction Stop
         $script:CodexPath = $codexCmd.Source
 
+        # Log detailed info about the codex executable
+        Write-Host "[INFO] Codex CLI found" -ForegroundColor Green
+        Write-Host "[INFO]   Path: $script:CodexPath" -ForegroundColor Green
+        Write-Host "[INFO]   Type: $($codexCmd.CommandType)" -ForegroundColor Green
+
+        # If it's a script/batch file, show what it wraps
+        if ($codexCmd.CommandType -eq "Application") {
+            $ext = [System.IO.Path]::GetExtension($script:CodexPath).ToLower()
+            Write-Host "[INFO]   Extension: $ext" -ForegroundColor Green
+            if ($ext -in @(".cmd", ".bat", ".ps1")) {
+                Write-Host "[WARN]   This is a wrapper script - stdin piping may have issues" -ForegroundColor Yellow
+            }
+        }
+
+        # Get version
+        Write-Host "[CHECK] Getting Codex version..." -ForegroundColor Yellow
         $version = & $script:CodexPath --version 2>&1
         if ($LASTEXITCODE -ne 0) {
-            Write-Host "[ERROR] Codex CLI not found. Ensure 'codex' is on PATH." -ForegroundColor Red
+            Write-Host "[ERROR] Codex CLI not responding. Exit code: $LASTEXITCODE" -ForegroundColor Red
+            Write-Host "[ERROR] Output: $version" -ForegroundColor Red
             return $false
         }
-        Write-Host "[INFO] Codex CLI found: $version" -ForegroundColor Green
-        Write-Host "[INFO] Codex path: $script:CodexPath" -ForegroundColor Green
+        Write-Host "[INFO]   Version: $version" -ForegroundColor Green
+
     } catch {
         Write-Host "[ERROR] Codex CLI not found. Ensure 'codex' is on PATH." -ForegroundColor Red
+        Write-Host "[ERROR] Exception: $($_.Exception.Message)" -ForegroundColor Red
         return $false
     }
 
     # Check auth status (codex login status returns 0 if logged in)
-    Write-Host "[INFO] Checking Codex authentication..." -ForegroundColor Yellow
+    Write-Host "[CHECK] Checking Codex authentication..." -ForegroundColor Yellow
     try {
         $authOutput = & codex login status 2>&1
+        Write-DiagLog "Auth check exit code: $LASTEXITCODE"
+        Write-DiagLog "Auth check output: $authOutput"
+
         if ($LASTEXITCODE -eq 0) {
             Write-Host "[INFO] Codex: Authenticated" -ForegroundColor Green
             if ($authOutput) {
-                Write-Host "[INFO] $authOutput" -ForegroundColor Green
+                Write-Host "[INFO]   $authOutput" -ForegroundColor Green
             }
         } else {
-            Write-Host "[WARN] Codex: Not authenticated" -ForegroundColor Yellow
-            Write-Host "[WARN] Run 'codex' to login, or set OPENAI_API_KEY" -ForegroundColor Yellow
+            Write-Host "[WARN] Codex: Not authenticated (exit code: $LASTEXITCODE)" -ForegroundColor Yellow
+            Write-Host "[WARN] Run 'codex' interactively to login, or set OPENAI_API_KEY environment variable" -ForegroundColor Yellow
+            if ($authOutput) {
+                Write-Host "[WARN]   Output: $authOutput" -ForegroundColor Yellow
+            }
         }
     } catch {
-        Write-Host "[WARN] Could not check Codex auth status" -ForegroundColor Yellow
+        Write-Host "[WARN] Could not check Codex auth status: $($_.Exception.Message)" -ForegroundColor Yellow
+    }
+
+    # Test stdin piping capability
+    Write-Host "[CHECK] Testing stdin piping to Codex..." -ForegroundColor Yellow
+    try {
+        $testResult = "test" | & $script:CodexPath --version 2>&1
+        Write-Host "[INFO] Stdin pipe test: OK (codex accepts piped input)" -ForegroundColor Green
+        Write-DiagLog "Stdin test output: $testResult"
+    } catch {
+        Write-Host "[WARN] Stdin pipe test failed: $($_.Exception.Message)" -ForegroundColor Yellow
     }
 
     return $true
@@ -221,13 +279,30 @@ function Invoke-CodexRequest {
 
     # Save prompt to temp file
     $promptText = $Request.prompt
+    Write-DiagLog "Prompt length: $($promptText.Length) chars"
+    Write-DiagLog "Prompt preview: $($promptText.Substring(0, [Math]::Min(100, $promptText.Length)))..."
 
     # Timeout
     $timeout = if ($options.timeout_seconds) { $options.timeout_seconds } else { $script:Config.TimeoutSeconds }
+    Write-DiagLog "Timeout set to: $timeout seconds"
 
     # Write prompt to temp file (will be piped via stdin to avoid PS 5.1 arg bug)
     $promptFile = Join-Path $env:TEMP "codex-prompt-$(New-JobId).txt"
+    Write-DiagLog "Writing prompt to temp file: $promptFile"
     [System.IO.File]::WriteAllText($promptFile, $promptText, [System.Text.Encoding]::UTF8)
+
+    # Verify the file was written correctly
+    if (Test-Path $promptFile) {
+        $fileInfo = Get-Item $promptFile
+        Write-DiagLog "Prompt file created: $($fileInfo.Length) bytes"
+        $fileContent = [System.IO.File]::ReadAllText($promptFile, [System.Text.Encoding]::UTF8)
+        Write-DiagLog "Prompt file content length: $($fileContent.Length) chars"
+        if ($fileContent.Length -eq 0) {
+            Write-Host "[ERROR] Prompt file is empty!" -ForegroundColor Red
+        }
+    } else {
+        Write-Host "[ERROR] Failed to create prompt file: $promptFile" -ForegroundColor Red
+    }
 
     try {
         # Build args string (prompt will be piped via stdin, not passed as argument)
@@ -235,19 +310,27 @@ function Invoke-CodexRequest {
             if ($_ -match '\s') { "`"$_`"" } else { $_ }
         }) -join " "
 
+        Write-DiagLog "Codex args: $codexArgsStr"
+        Write-DiagLog "Codex path: $script:CodexPath"
+
         # Build a PowerShell script that reads file and pipes to codex via stdin
         # This bypasses PS 5.1's known bug with multiline args to native executables
         $psScript = @"
 Get-Content -Path '$promptFile' -Raw -Encoding UTF8 | & '$script:CodexPath' $codexArgsStr
 "@
+        Write-DiagLog "Inner PS script: $psScript"
+
         # Encode script as base64 to avoid all escaping issues
         $scriptBytes = [System.Text.Encoding]::Unicode.GetBytes($psScript)
         $encodedScript = [Convert]::ToBase64String($scriptBytes)
+        Write-DiagLog "Encoded script length: $($encodedScript.Length) chars"
 
         # Setup process
         $psi = New-Object System.Diagnostics.ProcessStartInfo
         $psi.FileName = "powershell.exe"
         $psi.Arguments = "-ExecutionPolicy Bypass -NoProfile -EncodedCommand $encodedScript"
+
+        Write-DiagLog "Process: powershell.exe $($psi.Arguments.Substring(0, [Math]::Min(100, $psi.Arguments.Length)))..."
 
         $psi.WorkingDirectory = $workDir
         $psi.RedirectStandardOutput = $true
@@ -257,28 +340,36 @@ Get-Content -Path '$promptFile' -Raw -Encoding UTF8 | & '$script:CodexPath' $cod
         $psi.StandardOutputEncoding = [System.Text.Encoding]::UTF8
         $psi.StandardErrorEncoding = [System.Text.Encoding]::UTF8
 
+        Write-DiagLog "Working directory: $workDir"
         Write-Host "[JOB $jobId] Starting: codex $($codexArgs -join ' ')" -ForegroundColor Cyan
 
         $process = [System.Diagnostics.Process]::Start($psi)
+        Write-DiagLog "Process started: PID $($process.Id)"
 
         # Collect all events
         $events = @()
         $lastMessage = ""
+        $lineCount = 0
 
         # Stream JSONL events as they arrive
+        Write-DiagLog "Reading stdout from Codex process..."
         while (-not $process.StandardOutput.EndOfStream) {
             $line = $process.StandardOutput.ReadLine()
+            $lineCount++
             if ($line) {
                 $cleanLine = Remove-AnsiCodes $line
+                Write-DiagLog "Line $lineCount (${$cleanLine.Length} chars): $($cleanLine.Substring(0, [Math]::Min(80, $cleanLine.Length)))..."
 
                 # Try to parse as JSON event
                 try {
                     $event = $cleanLine | ConvertFrom-Json
                     $events += $event
+                    Write-DiagLog "Parsed event type: $($event.type)"
 
                     # Extract agent message if present
                     if ($event.type -eq "item.completed" -and $event.item.type -eq "agent_message") {
                         $lastMessage = if ($event.item.text) { $event.item.text } else { $event.item.content }
+                        Write-DiagLog "Got agent message: $($lastMessage.Substring(0, [Math]::Min(50, $lastMessage.Length)))..."
                     }
 
                     # Stream event to client (wrapped)
@@ -290,6 +381,7 @@ Get-Content -Path '$promptFile' -Raw -Encoding UTF8 | & '$script:CodexPath' $cod
                     Write-PipeResponse -Pipe $Pipe -JsonResponse $streamEvent
                 } catch {
                     # Not JSON, treat as raw output
+                    Write-DiagLog "Non-JSON line: $cleanLine"
                     if ($cleanLine.Trim()) {
                         $events += @{ type = "raw"; content = $cleanLine }
                     }
@@ -304,15 +396,23 @@ Get-Content -Path '$promptFile' -Raw -Encoding UTF8 | & '$script:CodexPath' $cod
         }
 
         # Wait for process to complete
+        Write-DiagLog "Waiting for process to exit..."
         $process.WaitForExit()
+        Write-DiagLog "Process exited with code: $($process.ExitCode)"
 
         # Capture any stderr
         $stderr = $process.StandardError.ReadToEnd()
         if ($stderr) {
             $stderr = Remove-AnsiCodes $stderr
+            Write-DiagLog "Stderr ($($stderr.Length) chars): $stderr"
+        } else {
+            Write-DiagLog "No stderr output"
         }
 
         $duration = [long]((Get-Date) - $startTime).TotalMilliseconds
+        Write-DiagLog "Total events received: $($events.Count)"
+        Write-DiagLog "Total lines processed: $lineCount"
+        Write-DiagLog "Final message length: $($lastMessage.Length) chars"
 
         # Build final response
         if ($process.ExitCode -eq 0) {
@@ -323,9 +423,17 @@ Get-Content -Path '$promptFile' -Raw -Encoding UTF8 | & '$script:CodexPath' $cod
             }
             if ($stderr) { $result.stderr = $stderr }
 
+            if ($lastMessage.Length -eq 0 -and $events.Count -le 2) {
+                Write-Host "[WARN] Codex returned success but no meaningful response!" -ForegroundColor Yellow
+                Write-Host "[WARN] Events: $($events | ConvertTo-Json -Compress)" -ForegroundColor Yellow
+                Write-Host "[WARN] This usually means Codex didn't receive the prompt or there's an auth issue" -ForegroundColor Yellow
+            }
+
             $response = New-JsonResponse -Id $jobId -Status "success" -Result $result -DurationMs $duration
         } else {
             $errorMsg = if ($stderr) { $stderr } else { "Codex exited with code $($process.ExitCode)" }
+            Write-Host "[ERROR] Codex failed with exit code $($process.ExitCode)" -ForegroundColor Red
+            Write-Host "[ERROR] $errorMsg" -ForegroundColor Red
             $response = New-JsonResponse -Id $jobId -Status "error" -Error $errorMsg -DurationMs $duration
         }
 
@@ -428,6 +536,11 @@ function Start-CodexService {
     Write-Host "[CONFIG] Timeout: $($script:Config.TimeoutSeconds) seconds" -ForegroundColor Yellow
     Write-Host "[CONFIG] Working Dir: $($script:Config.WorkingDirectory)" -ForegroundColor Yellow
     Write-Host "[CONFIG] Temp Root: $($script:Config.TempRoot)" -ForegroundColor Yellow
+    if ($script:VerboseLogging) {
+        Write-Host "[CONFIG] Verbose Logging: ENABLED" -ForegroundColor Magenta
+    } else {
+        Write-Host "[CONFIG] Verbose Logging: disabled (use -Verbose to enable)" -ForegroundColor Gray
+    }
     Write-Host ""
 
     if (-not (Test-CodexInstallation)) {

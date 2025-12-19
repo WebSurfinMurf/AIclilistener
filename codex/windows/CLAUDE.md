@@ -228,6 +228,32 @@ Date        Sales    Region
 
 ## Troubleshooting
 
+### Enable Verbose Logging (v1.3.0+)
+
+Run the service with `-Verbose` to see detailed diagnostic output:
+
+```powershell
+.\CodexService.ps1 -Verbose
+```
+
+This will show:
+- Codex executable path, type, and extension
+- Authentication check results
+- Stdin piping test results
+- Prompt file creation and content verification
+- Exact commands being executed
+- Each event received from Codex
+- Warnings when responses are empty
+
+### "Codex returned success but no meaningful response"
+
+This warning appears when Codex exits with code 0 but returns no actual response. Common causes:
+1. **Authentication issue**: Run `codex` interactively to login, or set `OPENAI_API_KEY`
+2. **Stdin not received**: The prompt didn't reach Codex (check verbose logs)
+3. **API error**: Codex may have encountered an API-side issue
+
+Run with `-Verbose` to see the exact events received.
+
 ### "Pipe not found" or "Service not available"
 ```powershell
 # Start the service first
@@ -290,6 +316,14 @@ $prompt | & codex exec --json
 ---
 
 ## Version History
+
+### v1.3.0
+- Added `-Verbose` flag for detailed diagnostic logging
+- Enhanced startup checks: shows codex executable type, extension, and warns about wrapper scripts
+- Logs prompt file creation, content verification, and exact commands being executed
+- Logs each event received from Codex with type information
+- Warns when Codex returns success but no meaningful response (helps diagnose auth/stdin issues)
+- Added stdin pipe test during startup verification
 
 ### v1.2.2
 - Fixed PS 5.1 multiline argument bug by piping prompt via stdin
