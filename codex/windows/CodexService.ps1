@@ -279,7 +279,7 @@ function Invoke-CodexRequest {
 
                     # Extract agent message if present
                     if ($event.type -eq "item.completed" -and $event.item.type -eq "agent_message") {
-                        $lastMessage = $event.item.content
+                        $lastMessage = if ($event.item.text) { $event.item.text } else { $event.item.content }
                     }
 
                     # Stream event to client (wrapped)

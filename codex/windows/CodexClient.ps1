@@ -122,7 +122,8 @@ function Send-CodexRequest {
                                     }
                                     "streaming" {
                                         if ($json.event.type -eq "item.completed" -and $json.event.item.type -eq "agent_message") {
-                                            Write-Host "[AGENT] $($json.event.item.content)" -ForegroundColor Cyan
+                                            $agentText = if ($json.event.item.text) { $json.event.item.text } else { $json.event.item.content }
+                                            Write-Host "[AGENT] $agentText" -ForegroundColor Cyan
                                         } elseif ($json.event.type) {
                                             Write-Host "[EVENT] $($json.event.type)" -ForegroundColor Gray
                                         }
