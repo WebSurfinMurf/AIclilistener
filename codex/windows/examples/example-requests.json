@@ -1,0 +1,80 @@
+{
+  "examples": [
+    {
+      "description": "Simple prompt - read only",
+      "request": {
+        "prompt": "Explain what a binary search algorithm is",
+        "options": {
+          "sandbox": "read-only",
+          "timeout_seconds": 60
+        }
+      }
+    },
+    {
+      "description": "Code generation with file writing",
+      "request": {
+        "prompt": "Create a Python script that reads a CSV file and outputs the top 10 rows",
+        "working_directory": "C:\\Projects\\MyApp",
+        "options": {
+          "sandbox": "full-auto",
+          "timeout_seconds": 120
+        }
+      }
+    },
+    {
+      "description": "Bug fix in existing project",
+      "request": {
+        "id": "bugfix-001",
+        "prompt": "Find and fix the null reference exception in the UserService class",
+        "working_directory": "C:\\Projects\\MyApp",
+        "options": {
+          "sandbox": "workspace-write",
+          "timeout_seconds": 300
+        }
+      }
+    },
+    {
+      "description": "Service ping command",
+      "request": {
+        "command": "ping"
+      }
+    },
+    {
+      "description": "Service status command",
+      "request": {
+        "command": "status"
+      }
+    },
+    {
+      "description": "Service shutdown command",
+      "request": {
+        "command": "shutdown"
+      }
+    }
+  ],
+  "schema": {
+    "request": {
+      "id": "optional - auto-generated if not provided",
+      "prompt": "required for Codex requests - the task description",
+      "command": "alternative to prompt - service commands: ping, status, shutdown",
+      "working_directory": "optional - directory for Codex to work in",
+      "options": {
+        "sandbox": "read-only | workspace-write | full-auto | danger-full-access",
+        "timeout_seconds": "operation timeout (default: 300)",
+        "output_schema": "optional - JSON Schema for structured output"
+      }
+    },
+    "response": {
+      "id": "job identifier",
+      "status": "processing | streaming | success | error",
+      "timestamp": "ISO 8601 timestamp",
+      "duration_ms": "operation duration in milliseconds",
+      "result": {
+        "message": "final agent message",
+        "events": "array of JSONL events from Codex",
+        "exit_code": "Codex process exit code"
+      },
+      "error": "error message if status is error"
+    }
+  }
+}
