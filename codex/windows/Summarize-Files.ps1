@@ -35,7 +35,7 @@
 
 .NOTES
     Requires CodexService.ps1 to be running
-    Version: 1.2.2 - Robust BOM handling with raw/clean column name separation
+    Version: 1.2.3 - MaxChars 50k default, PDF text extraction via Word
 #>
 
 param(
@@ -50,7 +50,7 @@ param(
 
     [string]$SummaryColumn = "Summary",
 
-    [int]$MaxChars = 10000,
+    [int]$MaxChars = 50000,
 
     [switch]$Resume
 )

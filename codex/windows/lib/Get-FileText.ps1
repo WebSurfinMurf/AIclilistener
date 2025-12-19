@@ -269,7 +269,40 @@ function Get-WordText {
 function Get-PdfText {
     param([string]$FilePath)
 
-    # Method 1: Try using Windows built-in PDF handling via Shell
+    # Method 1: Try using Word to open and extract PDF text (Word 2013+ can read PDFs)
+    $word = $null
+    $doc = $null
+
+    try {
+        $word = New-Object -ComObject Word.Application -ErrorAction Stop
+        $word.Visible = $false
+        $word.DisplayAlerts = 0  # wdAlertsNone
+
+        # Open PDF in Word (Word converts it internally)
+        # Parameters: FileName, ConfirmConversions, ReadOnly, AddToRecentFiles, PasswordDocument, PasswordTemplate, Revert, WritePasswordDocument, WritePasswordTemplate, Format
+        $doc = $word.Documents.Open($FilePath, $false, $true, $false)
+
+        $text = $doc.Content.Text
+
+        if ($text -and $text.Trim().Length -gt 100) {
+            return "=== PDF FILE: $([System.IO.Path]::GetFileName($FilePath)) ===`n`n$text"
+        }
+    } catch {
+        # Word method failed, continue to fallback
+    } finally {
+        if ($doc) {
+            $doc.Close($false)
+            [System.Runtime.InteropServices.Marshal]::ReleaseComObject($doc) | Out-Null
+        }
+        if ($word) {
+            $word.Quit()
+            [System.Runtime.InteropServices.Marshal]::ReleaseComObject($word) | Out-Null
+        }
+        [System.GC]::Collect()
+        [System.GC]::WaitForPendingFinalizers()
+    }
+
+    # Method 2: Fall back to metadata only
     try {
         $shell = New-Object -ComObject Shell.Application
         $folder = $shell.Namespace((Split-Path $FilePath))
@@ -285,15 +318,14 @@ function Get-PdfText {
         if ($author) { $info += "Author: $author`n" }
         if ($pages) { $info += "Pages: $pages`n" }
 
-        # Note: Full text extraction from PDF requires external tools
-        $info += "`n[PDF text extraction requires external tools like pdftotext or Adobe Reader]"
-        $info += "`n[Consider passing the file path to Codex and letting it read the file directly]"
+        $info += "`n[PDF text extraction via Word failed - only metadata available]"
+        $info += "`n[Install Word 2013+ for full PDF text extraction]"
 
         return $info
 
     } catch {
         $fileInfo = Get-Item $FilePath
-        return "[PDF file: $($fileInfo.Name), Size: $($fileInfo.Length) bytes - text extraction not available without external tools]"
+        return "[PDF file: $($fileInfo.Name), Size: $($fileInfo.Length) bytes - text extraction not available]"
     }
 }
 
