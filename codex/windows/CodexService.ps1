@@ -214,42 +214,33 @@ function Invoke-CodexRequest {
         default { $codexArgs += "--sandbox"; $codexArgs += "read-only" }
     }
 
-    # Add the prompt (must be last)
-    $codexArgs += $Request.prompt
+    # Save prompt separately - will be written to temp file to avoid command line escaping issues
+    $promptText = $Request.prompt
 
     # Timeout
     $timeout = if ($options.timeout_seconds) { $options.timeout_seconds } else { $script:Config.TimeoutSeconds }
 
+    # Write prompt to temp file (avoids complex escaping for multi-line prompts with special chars)
+    $promptFile = Join-Path $env:TEMP "codex-prompt-$(New-JobId).txt"
+    [System.IO.File]::WriteAllText($promptFile, $promptText, [System.Text.Encoding]::UTF8)
+
     try {
-        # Setup process - handle different executable types
-        $psi = New-Object System.Diagnostics.ProcessStartInfo
+        # Build args string (without prompt - that comes from file)
         $codexArgsStr = ($codexArgs | ForEach-Object {
             if ($_ -match '\s') { "`"$_`"" } else { $_ }
         }) -join " "
 
+        # Add prompt file read via PowerShell subexpression
+        $codexArgsStr += " `$(Get-Content -Path '$promptFile' -Raw)"
+
+        # Setup process - handle different executable types
+        $psi = New-Object System.Diagnostics.ProcessStartInfo
         $ext = [System.IO.Path]::GetExtension($script:CodexPath).ToLower()
-        switch ($ext) {
-            ".ps1" {
-                # PowerShell script - run through powershell.exe
-                $psi.FileName = "powershell.exe"
-                $psi.Arguments = "-ExecutionPolicy Bypass -NoProfile -File `"$script:CodexPath`" $codexArgsStr"
-            }
-            ".cmd" {
-                # Batch file - run through cmd.exe
-                $psi.FileName = "cmd.exe"
-                $psi.Arguments = "/c `"$script:CodexPath`" $codexArgsStr"
-            }
-            ".bat" {
-                # Batch file - run through cmd.exe
-                $psi.FileName = "cmd.exe"
-                $psi.Arguments = "/c `"$script:CodexPath`" $codexArgsStr"
-            }
-            default {
-                # Assume .exe or other directly executable
-                $psi.FileName = $script:CodexPath
-                $psi.Arguments = $codexArgsStr
-            }
-        }
+
+        # Always use PowerShell to handle the prompt file read
+        $psi.FileName = "powershell.exe"
+        $psi.Arguments = "-ExecutionPolicy Bypass -NoProfile -Command `"& '$script:CodexPath' $codexArgsStr`""
+
         $psi.WorkingDirectory = $workDir
         $psi.RedirectStandardOutput = $true
         $psi.RedirectStandardError = $true
@@ -339,6 +330,11 @@ function Invoke-CodexRequest {
         Write-PipeResponse -Pipe $Pipe -JsonResponse $response
         Write-Host "[JOB $jobId] Failed: $($_.Exception.Message)" -ForegroundColor Red
     } finally {
+        # Cleanup temp prompt file
+        if ($promptFile -and (Test-Path $promptFile)) {
+            Remove-Item -Path $promptFile -Force -ErrorAction SilentlyContinue
+        }
+
         # Cleanup temp directory if we created one
         if ($workDir -like "$($script:Config.TempRoot)*") {
             Remove-Item -Path $workDir -Recurse -Force -ErrorAction SilentlyContinue
