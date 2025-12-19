@@ -24,7 +24,7 @@
 
 .NOTES
     Author: AI CLI Listener Project
-    Version: 1.0.0
+    Version: 1.2.0 - Raw byte I/O for PS 5.1 compatibility
     Requires: OpenAI Codex CLI installed and on PATH
 #>
 
@@ -61,12 +61,23 @@ $script:Config = @{
     TimeoutSeconds = $TimeoutSeconds
     WorkingDirectory = $WorkingDirectory
     TempRoot = Join-Path $env:TEMP "codex-sessions"
-    Version = "1.1.0"
+    Version = "1.2.0"
 }
 
 # Ensure temp directory exists
 if (-not (Test-Path $script:Config.TempRoot)) {
     New-Item -Path $script:Config.TempRoot -ItemType Directory -Force | Out-Null
+}
+
+# Write response to pipe using raw bytes
+function Write-PipeResponse {
+    param(
+        [System.IO.Pipes.NamedPipeServerStream]$Pipe,
+        [string]$JsonResponse
+    )
+    $responseBytes = [System.Text.Encoding]::UTF8.GetBytes($JsonResponse + "`n")
+    $Pipe.Write($responseBytes, 0, $responseBytes.Length)
+    $Pipe.Flush()
 }
 
 # Verify Codex is available and authenticated
@@ -142,7 +153,7 @@ function New-JsonResponse {
 function Invoke-CodexRequest {
     param(
         [hashtable]$Request,
-        [System.IO.StreamWriter]$Writer
+        [System.IO.Pipes.NamedPipeServerStream]$Pipe
     )
 
     $jobId = if ($Request.id) { $Request.id } else { New-JobId }
@@ -151,7 +162,7 @@ function Invoke-CodexRequest {
     # Validate request
     if (-not $Request.prompt) {
         $response = New-JsonResponse -Id $jobId -Status "error" -Error "Missing required field: prompt"
-        $Writer.WriteLine($response)
+        Write-PipeResponse -Pipe $Pipe -JsonResponse $response
         return
     }
 
@@ -161,8 +172,7 @@ function Invoke-CodexRequest {
         status = "processing"
         message = "Request received, invoking Codex..."
     } | ConvertTo-Json -Compress
-    $Writer.WriteLine($ackResponse)
-    $Writer.Flush()
+    Write-PipeResponse -Pipe $Pipe -JsonResponse $ackResponse
 
     # Setup working directory
     $workDir = if ($Request.working_directory -and (Test-Path $Request.working_directory)) {
@@ -251,8 +261,7 @@ function Invoke-CodexRequest {
                         status = "streaming"
                         event = $event
                     } | ConvertTo-Json -Depth 10 -Compress
-                    $Writer.WriteLine($streamEvent)
-                    $Writer.Flush()
+                    Write-PipeResponse -Pipe $Pipe -JsonResponse $streamEvent
                 } catch {
                     # Not JSON, treat as raw output
                     if ($cleanLine.Trim()) {
@@ -294,15 +303,13 @@ function Invoke-CodexRequest {
             $response = New-JsonResponse -Id $jobId -Status "error" -Error $errorMsg -DurationMs $duration
         }
 
-        $Writer.WriteLine($response)
-        $Writer.Flush()
+        Write-PipeResponse -Pipe $Pipe -JsonResponse $response
         Write-Host "[JOB $jobId] Completed in ${duration}ms" -ForegroundColor Green
 
     } catch {
         $duration = [long]((Get-Date) - $startTime).TotalMilliseconds
         $response = New-JsonResponse -Id $jobId -Status "error" -Error $_.Exception.Message -DurationMs $duration
-        $Writer.WriteLine($response)
-        $Writer.Flush()
+        Write-PipeResponse -Pipe $Pipe -JsonResponse $response
         Write-Host "[JOB $jobId] Failed: $($_.Exception.Message)" -ForegroundColor Red
     } finally {
         # Cleanup temp directory if we created one
@@ -320,7 +327,7 @@ function Invoke-CodexRequest {
 function Invoke-ServiceCommand {
     param(
         [hashtable]$Request,
-        [System.IO.StreamWriter]$Writer
+        [System.IO.Pipes.NamedPipeServerStream]$Pipe
     )
 
     switch ($Request.command) {
@@ -331,8 +338,7 @@ function Invoke-ServiceCommand {
                 version = $script:Config.Version
                 timestamp = (Get-Date).ToString("o")
             } | ConvertTo-Json -Compress
-            $Writer.WriteLine($response)
-            $Writer.Flush()
+            Write-PipeResponse -Pipe $Pipe -JsonResponse $response
         }
         "status" {
             $response = @{
@@ -344,16 +350,14 @@ function Invoke-ServiceCommand {
                 temp_root = $script:Config.TempRoot
                 uptime_seconds = [int]((Get-Date) - $script:StartTime).TotalSeconds
             } | ConvertTo-Json -Compress
-            $Writer.WriteLine($response)
-            $Writer.Flush()
+            Write-PipeResponse -Pipe $Pipe -JsonResponse $response
         }
         "shutdown" {
             $response = @{
                 status = "ok"
                 message = "Shutting down..."
             } | ConvertTo-Json -Compress
-            $Writer.WriteLine($response)
-            $Writer.Flush()
+            Write-PipeResponse -Pipe $Pipe -JsonResponse $response
             $script:Running = $false
         }
         default {
@@ -361,8 +365,7 @@ function Invoke-ServiceCommand {
                 status = "error"
                 error = "Unknown command: $($Request.command)"
             } | ConvertTo-Json -Compress
-            $Writer.WriteLine($response)
-            $Writer.Flush()
+            Write-PipeResponse -Pipe $Pipe -JsonResponse $response
         }
     }
 }
@@ -436,18 +439,15 @@ function Start-CodexService {
 
                 Write-Host "[CONNECT] Client connected" -ForegroundColor Green
 
-                # Setup streams with explicit UTF-8 encoding
-                $reader = New-Object System.IO.StreamReader($pipeServer, [System.Text.Encoding]::UTF8)
-                $writer = New-Object System.IO.StreamWriter($pipeServer, [System.Text.Encoding]::UTF8)
-                $writer.AutoFlush = $true
-
                 try {
-                    # Read request (single line JSON)
+                    # Read request using raw bytes (StreamReader has buffering issues in PS 5.1)
                     Write-Host "[DEBUG] Waiting for request data..." -ForegroundColor Gray
-                    $requestLine = $reader.ReadLine()
-                    Write-Host "[DEBUG] ReadLine returned" -ForegroundColor Gray
+                    $buffer = New-Object byte[] 65536
+                    $bytesRead = $pipeServer.Read($buffer, 0, $buffer.Length)
 
-                    if ($requestLine) {
+                    if ($bytesRead -gt 0) {
+                        $requestLine = [System.Text.Encoding]::UTF8.GetString($buffer, 0, $bytesRead).Trim()
+
                         $displayLen = [Math]::Min(100, $requestLine.Length)
                         Write-Host "[REQUEST] Received ($($requestLine.Length) chars): $($requestLine.Substring(0, $displayLen))..." -ForegroundColor Cyan
 
@@ -472,16 +472,15 @@ function Start-CodexService {
 
                             # Route to appropriate handler
                             if ($request.command) {
-                                Invoke-ServiceCommand -Request $request -Writer $writer
+                                Invoke-ServiceCommand -Request $request -Pipe $pipeServer
                             } elseif ($request.prompt) {
-                                Invoke-CodexRequest -Request $request -Writer $writer
+                                Invoke-CodexRequest -Request $request -Pipe $pipeServer
                             } else {
                                 $response = @{
                                     status = "error"
                                     error = "Invalid request: must contain 'prompt' or 'command'"
                                 } | ConvertTo-Json -Compress
-                                $writer.WriteLine($response)
-                                $writer.Flush()
+                                Write-PipeResponse -Pipe $pipeServer -JsonResponse $response
                             }
                         } catch {
                             Write-Host "[ERROR] JSON parse failed: $($_.Exception.Message)" -ForegroundColor Red
@@ -489,15 +488,12 @@ function Start-CodexService {
                                 status = "error"
                                 error = "Failed to parse JSON: $($_.Exception.Message)"
                             } | ConvertTo-Json -Compress
-                            $writer.WriteLine($response)
-                            $writer.Flush()
+                            Write-PipeResponse -Pipe $pipeServer -JsonResponse $response
                         }
                     } else {
-                        Write-Host "[WARN] Empty request received" -ForegroundColor Yellow
+                        Write-Host "[WARN] Empty request received (0 bytes)" -ForegroundColor Yellow
                     }
                 } finally {
-                    $reader.Dispose()
-                    $writer.Dispose()
                     $pipeServer.Dispose()
                     $pipeServer = $null
                     Write-Host "[DISCONNECT] Client disconnected" -ForegroundColor Gray

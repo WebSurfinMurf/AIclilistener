@@ -270,6 +270,12 @@ Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process
 
 ## Version History
 
+### v1.2.0
+- **Critical Fix**: Raw byte I/O instead of StreamReader/StreamWriter
+- Fixes PS 5.1 buffering issue that caused ReadLine() to block indefinitely
+- Both service and client now use direct pipe.Read()/Write() with UTF-8 encoding
+- Improved terminal response detection in client
+
 ### v1.1.0
 - Security: Pipe ACLs restrict to current user
 - Robustness: try/finally cleanup prevents zombie pipes

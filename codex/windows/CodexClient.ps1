@@ -38,7 +38,7 @@
 
 .NOTES
     Author: AI CLI Listener Project
-    Version: 1.0.0
+    Version: 1.2.0 - Raw byte I/O for PS 5.1 compatibility
 #>
 
 param(
@@ -63,6 +63,8 @@ function Send-CodexRequest {
         [string]$RequestJson
     )
 
+    $pipeClient = $null
+
     try {
         # Connect to named pipe
         $pipeClient = New-Object System.IO.Pipes.NamedPipeClientStream(
@@ -78,84 +80,97 @@ function Send-CodexRequest {
 
         Write-Host "[CLIENT] Connected" -ForegroundColor Green
 
-        # Setup streams
-        $reader = New-Object System.IO.StreamReader($pipeClient, [System.Text.Encoding]::UTF8)
-        $writer = New-Object System.IO.StreamWriter($pipeClient, [System.Text.Encoding]::UTF8)
-        $writer.AutoFlush = $true
+        # Send request using raw bytes (StreamWriter has buffering issues in PS 5.1)
+        Write-Host "[CLIENT] Sending request..." -ForegroundColor Cyan
+        $requestBytes = [System.Text.Encoding]::UTF8.GetBytes($RequestJson + "`n")
+        $pipeClient.Write($requestBytes, 0, $requestBytes.Length)
+        $pipeClient.Flush()
+        Write-Host "[CLIENT] Request sent, waiting for response..." -ForegroundColor Cyan
 
-        try {
-            # Send request
-            Write-Host "[CLIENT] Sending request..." -ForegroundColor Cyan
-            $writer.WriteLine($RequestJson)
-            $writer.Flush()  # Explicit flush for PS 5.1 compatibility
-            Write-Host "[CLIENT] Request sent, waiting for response..." -ForegroundColor Cyan
+        # Read responses using raw bytes
+        $responses = @()
+        $buffer = New-Object byte[] 65536
+        $accumulated = ""
 
-            # Read all responses until pipe closes
-            $responses = @()
-            while ($true) {
-                $line = $reader.ReadLine()
-                if ($null -eq $line) { break }
+        while ($pipeClient.IsConnected) {
+            try {
+                $bytesRead = $pipeClient.Read($buffer, 0, $buffer.Length)
+                if ($bytesRead -eq 0) { break }
 
-                $responses += $line
+                $accumulated += [System.Text.Encoding]::UTF8.GetString($buffer, 0, $bytesRead)
 
-                # Parse and display
-                try {
-                    $json = $line | ConvertFrom-Json
+                # Process complete lines
+                while ($accumulated.Contains("`n")) {
+                    $idx = $accumulated.IndexOf("`n")
+                    $line = $accumulated.Substring(0, $idx)
+                    $accumulated = $accumulated.Substring($idx + 1)
 
-                    if ($Raw) {
-                        Write-Output $line
-                    } else {
-                        # Pretty display based on status
-                        switch ($json.status) {
-                            "processing" {
-                                Write-Host "[PROCESSING] $($json.message)" -ForegroundColor Yellow
-                            }
-                            "streaming" {
-                                if ($json.event.type -eq "item.completed" -and $json.event.item.type -eq "agent_message") {
-                                    Write-Host "[AGENT] $($json.event.item.content)" -ForegroundColor Cyan
-                                } elseif ($json.event.type) {
-                                    Write-Host "[EVENT] $($json.event.type)" -ForegroundColor Gray
+                    if ($line.Trim()) {
+                        $responses += $line
+
+                        # Parse and display
+                        try {
+                            $json = $line | ConvertFrom-Json
+
+                            if ($Raw) {
+                                Write-Output $line
+                            } else {
+                                # Pretty display based on status
+                                switch ($json.status) {
+                                    "processing" {
+                                        Write-Host "[PROCESSING] $($json.message)" -ForegroundColor Yellow
+                                    }
+                                    "streaming" {
+                                        if ($json.event.type -eq "item.completed" -and $json.event.item.type -eq "agent_message") {
+                                            Write-Host "[AGENT] $($json.event.item.content)" -ForegroundColor Cyan
+                                        } elseif ($json.event.type) {
+                                            Write-Host "[EVENT] $($json.event.type)" -ForegroundColor Gray
+                                        }
+                                    }
+                                    "success" {
+                                        Write-Host ""
+                                        Write-Host "========== RESULT ==========" -ForegroundColor Green
+                                        if ($json.result.message) {
+                                            Write-Host $json.result.message -ForegroundColor White
+                                        }
+                                        Write-Host ""
+                                        Write-Host "[DONE] Duration: $($json.duration_ms)ms" -ForegroundColor Green
+                                    }
+                                    "error" {
+                                        Write-Host ""
+                                        Write-Host "========== ERROR ==========" -ForegroundColor Red
+                                        Write-Host $json.error -ForegroundColor Red
+                                        if ($json.duration_ms) {
+                                            Write-Host "[FAILED] Duration: $($json.duration_ms)ms" -ForegroundColor Red
+                                        }
+                                    }
+                                    "ok" {
+                                        # Service command response
+                                        Write-Host ($json | ConvertTo-Json -Depth 5) -ForegroundColor Green
+                                    }
+                                    default {
+                                        Write-Host $line -ForegroundColor Gray
+                                    }
                                 }
                             }
-                            "success" {
-                                Write-Host ""
-                                Write-Host "========== RESULT ==========" -ForegroundColor Green
-                                if ($json.result.message) {
-                                    Write-Host $json.result.message -ForegroundColor White
-                                }
-                                Write-Host ""
-                                Write-Host "[DONE] Duration: $($json.duration_ms)ms" -ForegroundColor Green
+
+                            # Check if this is a terminal response
+                            if ($json.status -in @("success", "error", "ok")) {
+                                return $responses
                             }
-                            "error" {
-                                Write-Host ""
-                                Write-Host "========== ERROR ==========" -ForegroundColor Red
-                                Write-Host $json.error -ForegroundColor Red
-                                if ($json.duration_ms) {
-                                    Write-Host "[FAILED] Duration: $($json.duration_ms)ms" -ForegroundColor Red
-                                }
-                            }
-                            "ok" {
-                                # Service command response
-                                Write-Host ($json | ConvertTo-Json -Depth 5) -ForegroundColor Green
-                            }
-                            default {
-                                Write-Host $line -ForegroundColor Gray
-                            }
+                        } catch {
+                            # Not valid JSON
+                            Write-Host $line
                         }
                     }
-                } catch {
-                    # Not valid JSON
-                    Write-Host $line
                 }
+            } catch {
+                # Read error or disconnection
+                break
             }
-
-            return $responses
-
-        } finally {
-            $reader.Dispose()
-            $writer.Dispose()
-            $pipeClient.Dispose()
         }
+
+        return $responses
 
     } catch [TimeoutException] {
         Write-Host "[ERROR] Connection timeout - is the service running?" -ForegroundColor Red
@@ -168,6 +183,10 @@ function Send-CodexRequest {
     } catch {
         Write-Host "[ERROR] $($_.Exception.Message)" -ForegroundColor Red
         return $null
+    } finally {
+        if ($pipeClient) {
+            $pipeClient.Dispose()
+        }
     }
 }
 
