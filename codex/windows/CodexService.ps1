@@ -214,26 +214,26 @@ function Invoke-CodexRequest {
         default { $codexArgs += "--sandbox"; $codexArgs += "read-only" }
     }
 
-    # Save prompt separately - will be written to temp file to avoid command line escaping issues
+    # Save prompt to temp file
     $promptText = $Request.prompt
 
     # Timeout
     $timeout = if ($options.timeout_seconds) { $options.timeout_seconds } else { $script:Config.TimeoutSeconds }
 
-    # Write prompt to temp file (avoids complex escaping for multi-line prompts with special chars)
+    # Write prompt to temp file (will be piped via stdin to avoid PS 5.1 arg bug)
     $promptFile = Join-Path $env:TEMP "codex-prompt-$(New-JobId).txt"
     [System.IO.File]::WriteAllText($promptFile, $promptText, [System.Text.Encoding]::UTF8)
 
     try {
-        # Build args string (without prompt - that comes from file)
+        # Build args string (prompt will be piped via stdin, not passed as argument)
         $codexArgsStr = ($codexArgs | ForEach-Object {
             if ($_ -match '\s') { "`"$_`"" } else { $_ }
         }) -join " "
 
-        # Build a PowerShell script that reads the prompt file and calls codex
+        # Build a PowerShell script that reads file and pipes to codex via stdin
+        # This bypasses PS 5.1's known bug with multiline args to native executables
         $psScript = @"
-`$prompt = Get-Content -Path '$promptFile' -Raw
-& '$script:CodexPath' $codexArgsStr `$prompt
+Get-Content -Path '$promptFile' -Raw -Encoding UTF8 | & '$script:CodexPath' $codexArgsStr
 "@
         # Encode script as base64 to avoid all escaping issues
         $scriptBytes = [System.Text.Encoding]::Unicode.GetBytes($psScript)
