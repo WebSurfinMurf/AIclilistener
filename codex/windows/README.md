@@ -35,6 +35,21 @@ cd AIclilistener\codex\windows
 .\CodexClient.ps1 -Command shutdown
 ```
 
+### Batch File Summarization:
+```powershell
+# Create a CSV with file paths in column 1
+@"
+FilePath,Category
+C:\Windows\System32\drivers\etc\hosts,System
+$env:USERPROFILE\.gitconfig,Config
+"@ | Out-File files.csv -Encoding UTF8
+
+# Run summarizer (service must be running)
+.\Summarize-Files.ps1 -CsvPath files.csv
+
+# Check output: files_summarized.csv
+```
+
 ---
 
 ## Why Named Pipes?
@@ -310,11 +325,14 @@ The service handles one request at a time. Wait for the current request to compl
 ```
 codex/windows/
 ├── CodexService.ps1      # Main service (run this first)
-├── CodexClient.ps1       # Client for sending requests
+├── CodexClient.ps1       # Client for single requests
+├── Summarize-Files.ps1   # CSV batch processor for file summaries
 ├── Start-Service.bat     # Batch launcher for service
 ├── README.md             # This file
+├── CLAUDE.md             # Testing notes for Claude on Windows
 └── examples/
-    └── example-requests.json  # Request/response examples
+    ├── example-requests.json  # Request/response schema
+    └── sample-files.csv       # Sample CSV for testing
 ```
 
 ## License
