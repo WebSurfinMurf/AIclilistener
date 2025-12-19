@@ -57,6 +57,19 @@ Now Codex can use AIclilistener to farm out work (e.g., summarizing large files 
 
 ---
 
+## Context Isolation
+
+**Each request gets fresh, isolated context.** Every call to AIclilistener spawns a new `codex exec` process, meaning:
+
+- No memory of previous calls
+- No context pollution between requests
+- Clean slate for each task
+- Ideal for processing many items independently
+
+This is perfect for batch operations where you want each item processed without influence from previous items.
+
+---
+
 ## Quick Test Examples
 
 ### Service commands:
