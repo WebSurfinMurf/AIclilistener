@@ -270,36 +270,52 @@ function Get-PdfText {
     param([string]$FilePath)
 
     # Method 1: Try using Word to open and extract PDF text (Word 2013+ can read PDFs)
+    # Note: Word PDF conversion can be slow/unreliable, so we use a background job with timeout
     $word = $null
     $doc = $null
+    $timeoutSeconds = 30
 
     try {
-        $word = New-Object -ComObject Word.Application -ErrorAction Stop
-        $word.Visible = $false
-        $word.DisplayAlerts = 0  # wdAlertsNone
+        # Run Word extraction in a job with timeout to prevent hanging
+        $job = Start-Job -ScriptBlock {
+            param($pdfPath)
+            try {
+                $w = New-Object -ComObject Word.Application
+                $w.Visible = $false
+                $w.DisplayAlerts = 0
+                $d = $w.Documents.Open($pdfPath, $false, $true, $false)
+                $text = $d.Content.Text
+                $d.Close($false)
+                $w.Quit()
+                return $text
+            } catch {
+                return $null
+            }
+        } -ArgumentList $FilePath
 
-        # Open PDF in Word (Word converts it internally)
-        # Parameters: FileName, ConfirmConversions, ReadOnly, AddToRecentFiles, PasswordDocument, PasswordTemplate, Revert, WritePasswordDocument, WritePasswordTemplate, Format
-        $doc = $word.Documents.Open($FilePath, $false, $true, $false)
+        # Wait with timeout
+        $completed = Wait-Job -Job $job -Timeout $timeoutSeconds
 
-        $text = $doc.Content.Text
+        if ($completed) {
+            $text = Receive-Job -Job $job
+            Remove-Job -Job $job -Force
 
-        if ($text -and $text.Trim().Length -gt 100) {
-            return "=== PDF FILE: $([System.IO.Path]::GetFileName($FilePath)) ===`n`n$text"
+            if ($text -and $text.Trim().Length -gt 100) {
+                return "=== PDF FILE: $([System.IO.Path]::GetFileName($FilePath)) ===`n`n$text"
+            }
+        } else {
+            # Timeout - kill the job and any Word processes it spawned
+            Stop-Job -Job $job
+            Remove-Job -Job $job -Force
+            # Try to kill orphaned Word processes
+            Get-Process -Name "WINWORD" -ErrorAction SilentlyContinue | Where-Object {
+                $_.StartTime -gt (Get-Date).AddSeconds(-$timeoutSeconds - 5)
+            } | Stop-Process -Force -ErrorAction SilentlyContinue
+
+            Write-Host "[WARN] PDF extraction timed out after ${timeoutSeconds}s: $FilePath" -ForegroundColor Yellow
         }
     } catch {
         # Word method failed, continue to fallback
-    } finally {
-        if ($doc) {
-            $doc.Close($false)
-            [System.Runtime.InteropServices.Marshal]::ReleaseComObject($doc) | Out-Null
-        }
-        if ($word) {
-            $word.Quit()
-            [System.Runtime.InteropServices.Marshal]::ReleaseComObject($word) | Out-Null
-        }
-        [System.GC]::Collect()
-        [System.GC]::WaitForPendingFinalizers()
     }
 
     # Method 2: Fall back to metadata only
