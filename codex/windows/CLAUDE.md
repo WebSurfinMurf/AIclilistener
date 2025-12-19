@@ -317,6 +317,12 @@ $prompt | & codex exec --json
 
 ## Version History
 
+### v1.4.0
+- **Feature**: Full disk read access enabled by default
+- Adds `sandbox_permissions=["disk-full-read-access"]` to allow reading any file
+- Adds `-a never` to run without approval prompts
+- Codex can now read files from any location on the machine
+
 ### v1.3.1
 - **Fix**: Auto-switch from `.ps1` to `.cmd` shim when both exist
 - `.ps1` npm shims break stdin piping in PowerShell subprocesses

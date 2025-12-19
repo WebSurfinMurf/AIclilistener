@@ -24,7 +24,7 @@
 
 .NOTES
     Author: AI CLI Listener Project
-    Version: 1.3.1 - Auto-switch from .ps1 to .cmd shim for stdin compatibility
+    Version: 1.4.0 - Full disk read access, no approval prompts
     Requires: OpenAI Codex CLI installed and on PATH
 
     IMPORTANT: PowerShell 5.1 has a known bug where multiline strings passed
@@ -88,7 +88,7 @@ $script:Config = @{
     TimeoutSeconds = $TimeoutSeconds
     WorkingDirectory = $WorkingDirectory
     TempRoot = Join-Path $env:TEMP "codex-sessions"
-    Version = "1.3.1"
+    Version = "1.4.0"
 }
 
 # Ensure temp directory exists
@@ -288,6 +288,14 @@ function Invoke-CodexRequest {
         "danger-full-access" { $codexArgs += "--sandbox"; $codexArgs += "danger-full-access" }
         default { $codexArgs += "--sandbox"; $codexArgs += "read-only" }
     }
+
+    # Full disk read access - allows reading any file on the machine
+    $codexArgs += "-c"
+    $codexArgs += 'sandbox_permissions=["disk-full-read-access"]'
+
+    # Never ask for approval - runs autonomously
+    $codexArgs += "-a"
+    $codexArgs += "never"
 
     # Save prompt to temp file
     $promptText = $Request.prompt
