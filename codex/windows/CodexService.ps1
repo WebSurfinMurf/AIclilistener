@@ -230,16 +230,19 @@ function Invoke-CodexRequest {
             if ($_ -match '\s') { "`"$_`"" } else { $_ }
         }) -join " "
 
-        # Add prompt file read via PowerShell subexpression
-        $codexArgsStr += " `$(Get-Content -Path '$promptFile' -Raw)"
+        # Build a PowerShell script that reads the prompt file and calls codex
+        $psScript = @"
+`$prompt = Get-Content -Path '$promptFile' -Raw
+& '$script:CodexPath' $codexArgsStr `$prompt
+"@
+        # Encode script as base64 to avoid all escaping issues
+        $scriptBytes = [System.Text.Encoding]::Unicode.GetBytes($psScript)
+        $encodedScript = [Convert]::ToBase64String($scriptBytes)
 
-        # Setup process - handle different executable types
+        # Setup process
         $psi = New-Object System.Diagnostics.ProcessStartInfo
-        $ext = [System.IO.Path]::GetExtension($script:CodexPath).ToLower()
-
-        # Always use PowerShell to handle the prompt file read
         $psi.FileName = "powershell.exe"
-        $psi.Arguments = "-ExecutionPolicy Bypass -NoProfile -Command `"& '$script:CodexPath' $codexArgsStr`""
+        $psi.Arguments = "-ExecutionPolicy Bypass -NoProfile -EncodedCommand $encodedScript"
 
         $psi.WorkingDirectory = $workDir
         $psi.RedirectStandardOutput = $true
