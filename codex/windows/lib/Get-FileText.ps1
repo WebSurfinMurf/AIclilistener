@@ -272,22 +272,41 @@ function Get-PdfText {
     # Method 1: Try pdftotext (Poppler) - fast and reliable
     $pdftotextPath = Find-PdfToText
     if ($pdftotextPath) {
-        try {
-            $tempOutput = Join-Path $env:TEMP "pdfextract_$(Get-Random).txt"
-            $process = Start-Process -FilePath $pdftotextPath -ArgumentList "`"$FilePath`"", "`"$tempOutput`"" -Wait -NoNewWindow -PassThru
+        $bestText = $null
 
-            if ($process.ExitCode -eq 0 -and (Test-Path $tempOutput)) {
-                $text = Get-Content $tempOutput -Raw -Encoding UTF8
-                Remove-Item $tempOutput -Force -ErrorAction SilentlyContinue
+        # Try multiple extraction modes for best results
+        $modes = @(
+            @("-layout", "-enc", "UTF-8"),   # Layout preserved
+            @("-raw", "-enc", "UTF-8"),       # Raw content order
+            @("-enc", "UTF-8")                # Simple extraction
+        )
 
-                if ($text -and $text.Trim().Length -gt 10) {
-                    return "=== PDF FILE: $([System.IO.Path]::GetFileName($FilePath)) ===`n`n$text"
+        foreach ($modeArgs in $modes) {
+            try {
+                $tempOutput = Join-Path $env:TEMP "pdfextract_$(Get-Random).txt"
+                $args = $modeArgs + @($FilePath, $tempOutput)
+
+                $process = Start-Process -FilePath $pdftotextPath -ArgumentList $args -Wait -NoNewWindow -PassThru
+
+                if ($process.ExitCode -eq 0 -and (Test-Path $tempOutput)) {
+                    $text = Get-Content $tempOutput -Raw -Encoding UTF8
+                    Remove-Item $tempOutput -Force -ErrorAction SilentlyContinue
+
+                    if ($text -and $text.Trim().Length -gt 10) {
+                        # Keep best result (most content)
+                        if (-not $bestText -or $text.Length -gt $bestText.Length) {
+                            $bestText = $text
+                        }
+                    }
                 }
+                if (Test-Path $tempOutput) { Remove-Item $tempOutput -Force -ErrorAction SilentlyContinue }
+            } catch {
+                if (Test-Path $tempOutput) { Remove-Item $tempOutput -Force -ErrorAction SilentlyContinue }
             }
-            # Clean up temp file if it exists
-            if (Test-Path $tempOutput) { Remove-Item $tempOutput -Force -ErrorAction SilentlyContinue }
-        } catch {
-            # pdftotext failed, continue to fallback
+        }
+
+        if ($bestText) {
+            return "=== PDF FILE: $([System.IO.Path]::GetFileName($FilePath)) ===`n`n$bestText"
         }
     }
 
