@@ -310,52 +310,7 @@ function Get-PdfText {
         }
     }
 
-    # Method 2: Try using Word to open and extract PDF text (Word 2013+ can read PDFs)
-    # Note: Word PDF conversion can be slow/unreliable, so we use a background job with timeout
-    $timeoutSeconds = 30
-
-    try {
-        # Run Word extraction in a job with timeout to prevent hanging
-        $job = Start-Job -ScriptBlock {
-            param($pdfPath)
-            try {
-                $w = New-Object -ComObject Word.Application
-                $w.Visible = $false
-                $w.DisplayAlerts = 0
-                $d = $w.Documents.Open($pdfPath, $false, $true, $false)
-                $text = $d.Content.Text
-                $d.Close($false)
-                $w.Quit()
-                return $text
-            } catch {
-                return $null
-            }
-        } -ArgumentList $FilePath
-
-        # Wait with timeout
-        $completed = Wait-Job -Job $job -Timeout $timeoutSeconds
-
-        if ($completed) {
-            $text = Receive-Job -Job $job
-            Remove-Job -Job $job -Force
-
-            if ($text -and $text.Trim().Length -gt 100) {
-                return "=== PDF FILE: $([System.IO.Path]::GetFileName($FilePath)) ===`n`n$text"
-            }
-        } else {
-            # Timeout - kill the job and any Word processes it spawned
-            Stop-Job -Job $job
-            Remove-Job -Job $job -Force
-            # Try to kill orphaned Word processes
-            Get-Process -Name "WINWORD" -ErrorAction SilentlyContinue | Where-Object {
-                $_.StartTime -gt (Get-Date).AddSeconds(-$timeoutSeconds - 5)
-            } | Stop-Process -Force -ErrorAction SilentlyContinue
-        }
-    } catch {
-        # Word method failed, continue to fallback
-    }
-
-    # Method 3: Fall back to metadata only
+    # Method 2: Fall back to metadata only
     try {
         $shell = New-Object -ComObject Shell.Application
         $folder = $shell.Namespace((Split-Path $FilePath))

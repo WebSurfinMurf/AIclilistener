@@ -189,82 +189,10 @@ if ($pdftotextPath) {
 Write-Host ""
 
 # ============================================
-# Method 2: Word COM (skip if pdftotext worked)
+# Method 2: Shell metadata
 # ============================================
 Write-Host "----------------------------------------" -ForegroundColor Yellow
-Write-Host "METHOD 2: Microsoft Word COM" -ForegroundColor Yellow
-Write-Host "----------------------------------------" -ForegroundColor Yellow
-
-if ($bestContent -and $bestContent.Length -gt 100) {
-    Write-Host "[SKIP] pdftotext succeeded, skipping Word method (slow and unreliable)" -ForegroundColor Gray
-} else {
-    $word = $null
-    $doc = $null
-    $timeoutSeconds = 30
-
-    Write-Host "[WARN] Word can hang on PDFs - using $timeoutSeconds second timeout" -ForegroundColor Yellow
-
-    try {
-        $job = Start-Job -ScriptBlock {
-            param($pdfPath)
-            try {
-                $w = New-Object -ComObject Word.Application
-                $w.Visible = $false
-                $w.DisplayAlerts = 0
-                $d = $w.Documents.Open($pdfPath, $false, $true, $false)
-                $text = $d.Content.Text
-                $d.Close($false)
-                $w.Quit()
-                return $text
-            } catch {
-                return "ERROR: $($_.Exception.Message)"
-            }
-        } -ArgumentList $PdfPath
-
-        $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-        $completed = Wait-Job -Job $job -Timeout $timeoutSeconds
-        $stopwatch.Stop()
-
-        if ($completed) {
-            $text = Receive-Job -Job $job
-            Remove-Job -Job $job -Force
-
-            if ($text -and -not $text.StartsWith("ERROR:") -and $text.Trim().Length -gt 0) {
-                $charCount = $text.Length
-                $lineCount = ($text -split "`n").Count
-
-                Write-Host "[SUCCESS] Extracted $charCount chars, $lineCount lines in $($stopwatch.ElapsedMilliseconds)ms" -ForegroundColor Green
-
-                if (-not $bestContent -or $text.Length -gt $bestContent.Length) {
-                    $bestContent = $text
-                    $bestMethod = "Word COM"
-                }
-            } else {
-                Write-Host "[FAIL] Word returned: $text" -ForegroundColor Red
-            }
-        } else {
-            Stop-Job -Job $job -ErrorAction SilentlyContinue
-            Remove-Job -Job $job -Force -ErrorAction SilentlyContinue
-
-            # Kill orphaned Word processes
-            Get-Process -Name "WINWORD" -ErrorAction SilentlyContinue | Where-Object {
-                $_.StartTime -gt (Get-Date).AddSeconds(-$timeoutSeconds - 10)
-            } | Stop-Process -Force -ErrorAction SilentlyContinue
-
-            Write-Host "[FAIL] Word timed out after $timeoutSeconds seconds" -ForegroundColor Red
-        }
-    } catch {
-        Write-Host "[FAIL] Error: $($_.Exception.Message)" -ForegroundColor Red
-    }
-}
-
-Write-Host ""
-
-# ============================================
-# Method 3: Shell metadata
-# ============================================
-Write-Host "----------------------------------------" -ForegroundColor Yellow
-Write-Host "METHOD 3: Shell Metadata" -ForegroundColor Yellow
+Write-Host "METHOD 2: Shell Metadata" -ForegroundColor Yellow
 Write-Host "----------------------------------------" -ForegroundColor Yellow
 
 try {
