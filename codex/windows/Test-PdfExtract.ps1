@@ -181,7 +181,7 @@ if ($bestContent -and $bestContent.Length -gt 100) {
     $doc = $null
     $timeoutSeconds = 30
 
-    Write-Host "[WARN] Word PDF conversion can hang - using $timeoutSeconds second timeout" -ForegroundColor Yellow
+    Write-Host "[WARN] Word can hang on PDFs - using $timeoutSeconds second timeout" -ForegroundColor Yellow
 
     try {
         $job = Start-Job -ScriptBlock {
@@ -230,7 +230,7 @@ if ($bestContent -and $bestContent.Length -gt 100) {
                 $_.StartTime -gt (Get-Date).AddSeconds(-$timeoutSeconds - 10)
             } | Stop-Process -Force -ErrorAction SilentlyContinue
 
-            Write-Host "[FAIL] Word timed out after $timeoutSeconds seconds (PDF Reflow hung)" -ForegroundColor Red
+            Write-Host "[FAIL] Word timed out after $timeoutSeconds seconds" -ForegroundColor Red
         }
     } catch {
         Write-Host "[FAIL] Error: $($_.Exception.Message)" -ForegroundColor Red
