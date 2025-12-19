@@ -2,6 +2,41 @@
 
 A PowerShell-based persistent service that listens for JSON requests via Windows Named Pipes, invokes OpenAI Codex CLI, and returns JSON responses.
 
+---
+
+## QUICK TEST (5 minutes)
+
+### Get the code:
+```powershell
+git clone https://github.com/WebSurfinMurf/AIclilistener.git
+cd AIclilistener\codex\windows
+```
+
+### Terminal 1 - Start the service:
+```powershell
+.\Start-Service.bat
+```
+
+### Terminal 2 - Send requests:
+```powershell
+# Health check
+.\CodexClient.ps1 -Command ping
+
+# Simple prompt (read-only)
+.\CodexClient.ps1 -Prompt "Explain what recursion is"
+
+# Create a file (requires full-auto)
+.\CodexClient.ps1 -Prompt "Create a hello.py that prints Hello World" -Sandbox full-auto
+
+# Check service status
+.\CodexClient.ps1 -Command status
+
+# Shutdown service
+.\CodexClient.ps1 -Command shutdown
+```
+
+---
+
 ## Why Named Pipes?
 
 Named Pipes are the ideal IPC mechanism for corporate Windows laptops:
