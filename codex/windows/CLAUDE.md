@@ -1,107 +1,192 @@
-# Codex Windows Service - Testing Context
+# Codex Windows Service - Complete Guide
 
-## Version 1.1.0 Changes (Gemini Peer Review)
+## What This Does
 
-### Security Improvements
-- **Pipe ACLs**: Named pipe now restricted to current user only via `PipeSecurity`
-- Other users on the machine cannot connect to the service
-
-### Robustness Improvements
-- **Better cleanup**: Main loop wrapped in try/finally to ensure pipe disposal on Ctrl+C
-- **Zombie pipe prevention**: Explicit disposal in all error paths
-
-### Summarize-Files.ps1 Improvements
-- **Resume capability**: Use `-Resume` flag to continue from where you left off
-- **Incremental saving**: Results saved to disk after each file (crash-safe)
-- **Skip already processed**: Files with valid summaries are skipped on resume
+A PowerShell-based service that wraps OpenAI Codex CLI, allowing you to send JSON requests via Windows Named Pipes and receive JSON responses. Designed for corporate Windows laptops with no additional dependencies.
 
 ---
 
-## Quick Start for Testing
+## Quick Start (Run the Demo)
 
-### 1. Get the Code
 ```powershell
 git clone https://github.com/WebSurfinMurf/AIclilistener.git
 cd AIclilistener\codex\windows
+.\demo.ps1
 ```
 
-### 2. Start the Service (Terminal 1)
-```powershell
-.\Start-Service.bat
-```
-
-### 3. Test Basic Connectivity (Terminal 2)
-```powershell
-.\CodexClient.ps1 -Command ping
-.\CodexClient.ps1 -Command status
-```
-
-### 4. Test File Summarization
-```powershell
-# Create a test CSV
-@"
-FilePath,Category
-C:\Windows\System32\drivers\etc\hosts,System
-$env:USERPROFILE\Documents\some-file.txt,User
-"@ | Out-File -FilePath test-files.csv -Encoding UTF8
-
-# Run summarizer
-.\Summarize-Files.ps1 -CsvPath test-files.csv
-```
+The demo will:
+1. Check if service is running (pings it)
+2. Prompt you to start the service if needed
+3. Send a request to summarize the project's CLAUDE.md file
+4. Display the executive summary from Codex
 
 ---
 
 ## Files Overview
 
-| File | Purpose |
-|------|---------|
-| `CodexService.ps1` | Named Pipe listener - **run this first** |
-| `CodexClient.ps1` | Simple client for single requests |
-| `Summarize-Files.ps1` | CSV batch processor for file summaries |
-| `Start-Service.bat` | Launches service with execution policy bypass |
+```
+codex/windows/
+├── CodexService.ps1      # Named Pipe listener - START THIS FIRST
+├── CodexClient.ps1       # Client for sending requests
+├── Summarize-Files.ps1   # CSV batch processor
+├── demo.ps1              # Interactive demo script
+├── Start-Service.bat     # Launcher with execution policy bypass
+├── CLAUDE.md             # This file
+├── README.md             # Full documentation
+└── lib/
+    └── Get-FileText.ps1  # Multi-format file text extraction
+```
 
 ---
 
-## Troubleshooting
+## How Communication Works
 
-### "Pipe not found" or "Service not available"
-The service isn't running. Start it in a separate terminal:
+```
+┌─────────────┐      JSON Request       ┌─────────────────┐      subprocess      ┌─────────┐
+│ Your Script │ ───────────────────────>│ CodexService.ps1│ ──────────────────>  │  codex  │
+│             │      Named Pipe         │ (listening)     │                      │  exec   │
+│             │ <───────────────────────│                 │ <──────────────────  │         │
+└─────────────┘   JSON Response(s)      └─────────────────┘      JSONL events    └─────────┘
+```
+
+**Named Pipe**: `\\.\pipe\codex-service`
+
+---
+
+## Step-by-Step Testing
+
+### Step 1: Start the Service (Terminal 1)
 ```powershell
+cd AIclilistener\codex\windows
 .\Start-Service.bat
 ```
 
-### "Codex CLI not found"
-Verify Codex is installed:
-```powershell
-codex --version
+You should see:
+```
+========================================
+  Codex CLI Named Pipe Service v1.1.0
+========================================
+
+[CONFIG] Pipe Name: \\.\pipe\codex-service
+[SECURITY] Pipe restricted to: YOURPC\username
+[INFO] Service started. Waiting for connections...
 ```
 
-If not on PATH, find it and add:
+### Step 2: Test Basic Commands (Terminal 2)
 ```powershell
-$env:PATH += ";C:\path\to\codex"
+cd AIclilistener\codex\windows
+
+# Health check
+.\CodexClient.ps1 -Command ping
+
+# Service status
+.\CodexClient.ps1 -Command status
 ```
 
-### Execution Policy Errors
-Use the batch file or:
+### Step 3: Send a Prompt
 ```powershell
-Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process
+.\CodexClient.ps1 -Prompt "Explain what Docker is in 2 sentences"
 ```
 
-### JSON Parsing Issues
-If seeing garbled output, the encoding may be wrong. The scripts set UTF-8, but verify:
+### Step 4: Run the Demo
 ```powershell
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+.\demo.ps1
 ```
 
 ---
 
-## JSON Message Format
+## Using CodexClient.ps1
+
+### Basic Usage
+```powershell
+# Simple prompt
+.\CodexClient.ps1 -Prompt "Your question here"
+
+# With options
+.\CodexClient.ps1 -Prompt "Analyze this code" -Sandbox "read-only" -TimeoutSeconds 120
+
+# Service commands
+.\CodexClient.ps1 -Command ping
+.\CodexClient.ps1 -Command status
+.\CodexClient.ps1 -Command shutdown
+
+# Raw JSON output (for scripting)
+$result = .\CodexClient.ps1 -Prompt "Hello" -Raw
+```
+
+### Parameters
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `-Prompt` | - | Task/question to send to Codex |
+| `-Command` | - | Service command: ping, status, shutdown |
+| `-Sandbox` | read-only | read-only, workspace-write, full-auto, danger-full-access |
+| `-TimeoutSeconds` | 300 | Request timeout |
+| `-WorkingDirectory` | - | Working dir for Codex operations |
+| `-PipeName` | codex-service | Named pipe to connect to |
+| `-Raw` | false | Output raw JSON instead of formatted |
+
+---
+
+## Summarizing Files (CSV Batch Processing)
+
+### Basic Usage
+```powershell
+# Create a CSV with file paths
+@"
+FilePath,Category
+C:\Projects\app.py,Code
+C:\Docs\report.xlsx,Excel
+C:\Presentations\deck.pptx,PowerPoint
+"@ | Out-File files.csv -Encoding UTF8
+
+# Run summarizer
+.\Summarize-Files.ps1 -CsvPath files.csv
+
+# Output: files_summarized.csv with Summary column added
+```
+
+### Resume After Interruption
+```powershell
+# If script crashes or is interrupted, resume where you left off
+.\Summarize-Files.ps1 -CsvPath files.csv -Resume
+```
+
+### Supported File Formats
+
+| Format | Extensions | Requirement |
+|--------|------------|-------------|
+| Text | .txt, .md, .ps1, .py, .js, .json, .csv, .xml, etc. | None |
+| Excel | .xlsx, .xls, .xlsm | Excel installed |
+| PowerPoint | .pptx, .ppt, .pptm | PowerPoint installed |
+| Word | .docx, .doc, .docm | Word installed |
+| PDF | .pdf | Metadata only (full text needs external tools) |
+| RTF | .rtf | None |
+
+### How File Extraction Works
+
+For Office files, the script uses COM automation:
+```powershell
+# Example: Excel extraction
+=== EXCEL FILE: report.xlsx ===
+Sheets: 3
+
+--- Sheet: Summary ---
+Date        Sales    Region
+2024-01-01  1000     North
+2024-01-02  1500     South
+...
+```
+
+---
+
+## JSON Request/Response Format
 
 ### Request (sent to service)
 ```json
 {
-  "id": "summary-row-1",
-  "prompt": "Please read and summarize the following file.\n\nFILE: hosts\nTYPE: .txt\nPATH: C:\\Windows\\System32\\drivers\\etc\\hosts\n\n--- FILE CONTENTS BEGIN ---\n# Windows hosts file\n127.0.0.1 localhost\n--- FILE CONTENTS END ---\n\nProvide a concise summary...",
+  "id": "optional-custom-id",
+  "prompt": "Your task description here",
   "options": {
     "sandbox": "read-only",
     "timeout_seconds": 120
@@ -112,123 +197,88 @@ If seeing garbled output, the encoding may be wrong. The scripts set UTF-8, but 
 ### Response (from service)
 ```json
 {
-  "id": "summary-row-1",
+  "id": "job-id",
   "status": "success",
   "timestamp": "2025-12-19T15:30:00.000Z",
   "duration_ms": 3456,
   "result": {
-    "message": "This is the Windows hosts file used for local DNS resolution. It maps hostnames to IP addresses, with localhost mapped to 127.0.0.1. The file is commonly used for blocking websites or creating local development aliases.",
+    "message": "The response from Codex...",
     "events": [...],
     "exit_code": 0
   }
 }
 ```
 
+### Status Values
+- `processing` - Request received, working
+- `streaming` - Events arriving from Codex
+- `success` - Completed successfully
+- `error` - Failed with error message
+
 ---
 
-## CSV Summarizer Details
+## Security Features (v1.1.0)
 
-### Input CSV Format
-First column should contain full file paths:
-```csv
-FilePath,Category,Notes
-C:\Projects\app.py,Code,Main application
-C:\Docs\readme.md,Documentation,Project readme
-```
+- **Pipe ACLs**: Named pipe restricted to current user only
+- **No network exposure**: Uses local IPC, not HTTP/TCP
+- **No firewall prompts**: Named pipes don't trigger Windows Firewall
+- **Clean shutdown**: Proper disposal on Ctrl+C
 
-### Output CSV Format
-Adds a "Summary" column (or custom name):
-```csv
-FilePath,Category,Notes,Summary
-C:\Projects\app.py,Code,Main application,"Python Flask application with REST endpoints for user management..."
-C:\Docs\readme.md,Documentation,Project readme,"Project documentation covering installation, usage, and API reference..."
-```
+---
 
-### Parameters
+## Troubleshooting
+
+### "Pipe not found" or "Service not available"
 ```powershell
-.\Summarize-Files.ps1 `
-    -CsvPath "input.csv" `
-    -OutputPath "output.csv" `        # Optional, defaults to input_summarized.csv
-    -FileColumn "FilePath" `          # Optional, defaults to first column
-    -SummaryColumn "Description" `    # Optional, defaults to "Summary"
-    -MaxChars 10000                    # Optional, max chars to read per file
+# Start the service first
+.\Start-Service.bat
 ```
+
+### "Codex CLI not found"
+```powershell
+# Check if codex is installed
+codex --version
+
+# If not on PATH, add it
+$env:PATH += ";C:\path\to\codex"
+```
+
+### Execution Policy Errors
+```powershell
+# Use the batch file, or:
+Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process
+```
+
+### Office Files Not Extracting
+- Ensure Microsoft Office is installed
+- Excel/PowerPoint/Word must be available for COM automation
 
 ---
 
 ## Testing Checklist
 
-- [ ] Service starts without errors
-- [ ] `ping` command returns "pong"
-- [ ] `status` command shows service info
-- [ ] Simple prompt works: `.\CodexClient.ps1 -Prompt "Say hello"`
-- [ ] CSV summarizer processes files
-- [ ] Output CSV contains summaries
-- [ ] JSON is readable in both directions (check terminal output)
+- [ ] `.\Start-Service.bat` starts without errors
+- [ ] `.\CodexClient.ps1 -Command ping` returns "pong"
+- [ ] `.\CodexClient.ps1 -Command status` shows service info
+- [ ] `.\CodexClient.ps1 -Prompt "Hello"` returns a response
+- [ ] `.\demo.ps1` completes successfully
+- [ ] CSV summarizer processes text files
+- [ ] CSV summarizer processes Office files (if Office installed)
+- [ ] `-Resume` flag skips already-processed files
 
 ---
 
-## Common Test Scenarios
+## Version History
 
-### Test 1: Basic Connectivity
-```powershell
-.\CodexClient.ps1 -Command ping
-# Expected: {"status":"ok","message":"pong",...}
-```
+### v1.1.0
+- Security: Pipe ACLs restrict to current user
+- Robustness: try/finally cleanup prevents zombie pipes
+- Resume: `-Resume` flag for interrupted CSV processing
+- Incremental: Results saved after each file (crash-safe)
+- Multi-format: Support for xlsx, pptx, docx, pdf
 
-### Test 2: Simple Prompt
-```powershell
-.\CodexClient.ps1 -Prompt "What is 2+2?"
-# Expected: Streaming events, then final answer
-```
-
-### Test 3: File Summary (single file inline)
-```powershell
-.\CodexClient.ps1 -Prompt "Summarize this code: function hello() { console.log('Hello'); }"
-```
-
-### Test 4: CSV Batch Processing
-```powershell
-# Create test CSV with real files on your system
-$testCsv = @"
-FilePath
-$env:USERPROFILE\.gitconfig
-$env:USERPROFILE\.bashrc
-C:\Windows\System32\drivers\etc\hosts
-"@
-$testCsv | Out-File test.csv -Encoding UTF8
-
-.\Summarize-Files.ps1 -CsvPath test.csv
-# Check: test_summarized.csv should have Summary column
-```
-
----
-
-## Architecture
-
-```
-┌─────────────────────┐
-│  Summarize-Files.ps1│  (reads CSV, sends requests)
-└──────────┬──────────┘
-           │ JSON via Named Pipe
-           ▼
-┌─────────────────────┐
-│  CodexService.ps1   │  (persistent listener)
-└──────────┬──────────┘
-           │ subprocess
-           ▼
-┌─────────────────────┐
-│  codex exec --json  │  (OpenAI Codex CLI)
-└─────────────────────┘
-```
-
----
-
-## Notes for Claude on Windows
-
-If you're running Claude Code on Windows to help test:
-
-1. Check if service is running: `Get-Process | Where-Object {$_.ProcessName -like "*powershell*"}`
-2. Check named pipes: `Get-ChildItem \\.\pipe\ | Where-Object {$_.Name -like "*codex*"}`
-3. View service logs in Terminal 1 where it's running
-4. JSON should be pretty-printed in both terminals for readability
+### v1.0.0
+- Initial release
+- Named Pipe service
+- CodexClient for requests
+- CSV batch summarizer
