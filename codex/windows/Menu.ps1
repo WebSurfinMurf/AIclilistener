@@ -152,7 +152,7 @@ function Show-SetupMenu {
 
     $setupDialog = New-Object System.Windows.Forms.Form
     $setupDialog.Text = "Setup & Testing"
-    $setupDialog.Size = New-Object System.Drawing.Size(500, 350)
+    $setupDialog.Size = New-Object System.Drawing.Size(500, 400)
     $setupDialog.StartPosition = "CenterParent"
     $setupDialog.FormBorderStyle = "FixedDialog"
     $setupDialog.MaximizeBox = $false
@@ -199,6 +199,13 @@ function Show-SetupMenu {
             Label = "Run Demo"
             Description = "Interactive demo - test the service with a sample request"
             Color = [System.Drawing.Color]::FromArgb(25, 118, 210)
+        },
+        @{
+            Name = "About"
+            Label = "About"
+            Description = "About AIclilistener and license information"
+            Color = [System.Drawing.Color]::FromArgb(66, 66, 66)
+            AboutDialog = $true
         }
     )
 
@@ -223,6 +230,28 @@ function Show-SetupMenu {
 
             if ($info.PdfViewer) {
                 Show-PdfExtractDialog -ParentForm $setupDialog
+            } elseif ($info.AboutDialog) {
+                $aboutText = @"
+AIclilistener - Codex CLI Named Pipe Service
+
+A PowerShell-based service that wraps OpenAI Codex CLI, enabling JSON requests via Windows Named Pipes. Designed for corporate Windows environments with no additional dependencies.
+
+FEATURES:
+- Named Pipe IPC (no firewall prompts, no admin required)
+- Context isolation (fresh process per request)
+- Multi-format file extraction (Office, PDF, text)
+- Batch file summarization via CSV
+
+LICENSE: MIT
+
+SOURCE: github.com/WebSurfinMurf/AIclilistener
+"@
+                [System.Windows.Forms.MessageBox]::Show(
+                    $aboutText,
+                    "About AIclilistener",
+                    [System.Windows.Forms.MessageBoxButtons]::OK,
+                    [System.Windows.Forms.MessageBoxIcon]::Information
+                )
             } else {
                 $path = Join-Path $scriptDir $info.Name
                 if (Test-Path $path) {
