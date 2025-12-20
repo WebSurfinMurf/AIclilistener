@@ -166,10 +166,17 @@ function Show-CodexClientDialog {
             $statusLabel.ForeColor = [System.Drawing.Color]::FromArgb(156, 39, 176)
             $dialog.Refresh()
 
-            # Call CodexClient.ps1 with UTF-8 encoding
-            # Use -Command to set encoding in child process
-            $escapedPrompt = $prompt -replace '"', '\"'
-            $cmd = "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; & '$clientPath' -Prompt `"$escapedPrompt`" -Raw"
+            # Save prompt to temp file to avoid quoting issues
+            $tempFile = [System.IO.Path]::GetTempFileName()
+            $prompt | Out-File -FilePath $tempFile -Encoding UTF8 -NoNewline
+
+            # Call CodexClient.ps1 reading prompt from file
+            $cmd = @"
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+`$p = Get-Content -Path '$tempFile' -Raw -Encoding UTF8
+& '$clientPath' -Prompt `$p -Raw
+Remove-Item '$tempFile' -Force -ErrorAction SilentlyContinue
+"@
             $output = & powershell -ExecutionPolicy Bypass -Command $cmd 2>&1
 
             # Parse response
