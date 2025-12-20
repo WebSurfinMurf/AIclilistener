@@ -611,12 +611,13 @@ function Start-CodexService {
         while ($script:Running) {
             try {
                 # Create named pipe server with security ACL (current user only)
+                # Must use Asynchronous option for BeginWaitForConnection
                 $pipeServer = New-Object System.IO.Pipes.NamedPipeServerStream(
                     $script:Config.PipeName,
                     [System.IO.Pipes.PipeDirection]::InOut,
                     1,  # maxNumberOfServerInstances
                     [System.IO.Pipes.PipeTransmissionMode]::Byte,
-                    [System.IO.Pipes.PipeOptions]::None,
+                    [System.IO.Pipes.PipeOptions]::Asynchronous,
                     0,  # inBufferSize (default)
                     0,  # outBufferSize (default)
                     $pipeSecurity
