@@ -62,6 +62,38 @@ param(
 if (-not $CsvPath) {
     Add-Type -AssemblyName System.Windows.Forms
 
+    # Show explanation dialog first
+    $explanation = @"
+This tool summarizes files listed in a CSV.
+
+EXPECTED CSV FORMAT:
+First column should contain file paths.
+
+EXAMPLE CSV:
+FilePath,Category
+C:\Documents\report.docx,Reports
+C:\Code\app.py,Code
+C:\Data\sales.xlsx,Excel
+
+SUPPORTED FILES:
+Text, Word, Excel, PowerPoint, PDF, and more.
+
+Click OK to select your CSV file.
+"@
+
+    $infoResult = [System.Windows.Forms.MessageBox]::Show(
+        $explanation,
+        "Summarize Files - CSV Format",
+        [System.Windows.Forms.MessageBoxButtons]::OKCancel,
+        [System.Windows.Forms.MessageBoxIcon]::Information
+    )
+
+    if ($infoResult -ne [System.Windows.Forms.DialogResult]::OK) {
+        Write-Host "[INFO] Cancelled. Exiting." -ForegroundColor Yellow
+        exit 0
+    }
+
+    # Now show file picker
     $dialog = New-Object System.Windows.Forms.OpenFileDialog
     $dialog.Title = "Select CSV file with file paths to summarize"
     $dialog.Filter = "CSV files (*.csv)|*.csv|All files (*.*)|*.*"
