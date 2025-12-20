@@ -20,8 +20,9 @@ $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $scripts = @(
     @{
         Name = "CodexService.ps1"
-        Description = "Start the Named Pipe service (opens in new window)"
+        Description = "Start a Codex AI agent that accepts JSON requests via Named Pipe"
         NewWindow = $true
+        SelectDirectory = $true
         Color = [System.Drawing.Color]::FromArgb(46, 125, 50)  # Green
     },
     @{
@@ -32,47 +33,47 @@ $scripts = @(
     },
     @{
         Name = "CodexClient.ps1"
-        Description = "Send commands to the service (ping test)"
+        Description = "Send a ping command to verify the service is running"
         NewWindow = $false
         Args = "-Command ping"
         Color = [System.Drawing.Color]::FromArgb(25, 118, 210)  # Blue
     },
     @{
         Name = "Summarize-Files.ps1"
-        Description = "Batch summarize files from a CSV (file picker)"
+        Description = "Batch summarize files listed in a CSV using AI"
         NewWindow = $false
         Color = [System.Drawing.Color]::FromArgb(156, 39, 176)  # Purple
     },
     @{
         Name = "Install-Skill.ps1"
-        Description = "Install the AIclilistener skill for Codex"
+        Description = "Install the AIclilistener skill so Codex can use this service automatically"
         NewWindow = $false
         Color = [System.Drawing.Color]::FromArgb(255, 152, 0)  # Orange
     },
     @{
         Name = "Install-PdfToText.ps1"
-        Description = "Install pdftotext (Poppler) for PDF support"
+        Description = "Install pdftotext (Poppler) to enable PDF text extraction"
         NewWindow = $false
         Color = [System.Drawing.Color]::FromArgb(255, 152, 0)  # Orange
     },
     @{
         Name = "Test-PdfExtract.ps1"
-        Description = "Test PDF text extraction on a file"
+        Description = "Test PDF text extraction on a specific file"
         NewWindow = $false
         Color = [System.Drawing.Color]::FromArgb(121, 85, 72)  # Brown
     },
     @{
         Name = "Test-Pipe.ps1"
-        Description = "Low-level pipe connectivity test"
+        Description = "Low-level Named Pipe connectivity test"
         NewWindow = $false
         Color = [System.Drawing.Color]::FromArgb(121, 85, 72)  # Brown
     }
 )
 
-# Create form
+# Create form (25% wider: 500 -> 625)
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "AIclilistener Menu"
-$form.Size = New-Object System.Drawing.Size(500, 520)
+$form.Size = New-Object System.Drawing.Size(625, 540)
 $form.StartPosition = "CenterScreen"
 $form.FormBorderStyle = "FixedDialog"
 $form.MaximizeBox = $false
@@ -83,7 +84,7 @@ $titleLabel = New-Object System.Windows.Forms.Label
 $titleLabel.Text = "AIclilistener - Codex CLI Service"
 $titleLabel.Font = New-Object System.Drawing.Font("Segoe UI", 16, [System.Drawing.FontStyle]::Bold)
 $titleLabel.ForeColor = [System.Drawing.Color]::FromArgb(33, 33, 33)
-$titleLabel.Size = New-Object System.Drawing.Size(460, 35)
+$titleLabel.Size = New-Object System.Drawing.Size(580, 35)
 $titleLabel.Location = New-Object System.Drawing.Point(20, 15)
 $form.Controls.Add($titleLabel)
 
@@ -92,14 +93,15 @@ $subtitleLabel = New-Object System.Windows.Forms.Label
 $subtitleLabel.Text = "Select a script to run:"
 $subtitleLabel.Font = New-Object System.Drawing.Font("Segoe UI", 10)
 $subtitleLabel.ForeColor = [System.Drawing.Color]::FromArgb(100, 100, 100)
-$subtitleLabel.Size = New-Object System.Drawing.Size(460, 20)
+$subtitleLabel.Size = New-Object System.Drawing.Size(580, 20)
 $subtitleLabel.Location = New-Object System.Drawing.Point(20, 50)
 $form.Controls.Add($subtitleLabel)
 
-# Create buttons for each script
+# Create buttons for each script (25% wider: 450 -> 565)
 $yPos = 85
 $buttonHeight = 45
 $buttonSpacing = 8
+$buttonWidth = 565
 
 foreach ($script in $scripts) {
     $scriptPath = Join-Path $scriptDir $script.Name
@@ -111,7 +113,7 @@ foreach ($script in $scripts) {
 
     # Create button
     $button = New-Object System.Windows.Forms.Button
-    $button.Size = New-Object System.Drawing.Size(450, $buttonHeight)
+    $button.Size = New-Object System.Drawing.Size($buttonWidth, $buttonHeight)
     $button.Location = New-Object System.Drawing.Point(20, $yPos)
     $button.FlatStyle = "Flat"
     $button.FlatAppearance.BorderSize = 0
@@ -134,7 +136,56 @@ foreach ($script in $scripts) {
         $info = $sender.Tag
         $path = Join-Path $scriptDir $info.Name
 
-        if ($info.NewWindow) {
+        if ($info.SelectDirectory) {
+            # Special handling for CodexService - show explanation and folder picker
+            $explanation = @"
+Select a working directory for the Codex agent.
+
+PERMISSIONS:
+- The agent can WRITE to the selected folder and its subfolders
+- The agent can READ files anywhere on your computer
+
+This allows the agent to analyze files across your system while
+restricting changes to your chosen project folder.
+
+Click OK to select your working directory.
+"@
+
+            $result = [System.Windows.Forms.MessageBox]::Show(
+                $explanation,
+                "Codex Agent - Select Working Directory",
+                [System.Windows.Forms.MessageBoxButtons]::OKCancel,
+                [System.Windows.Forms.MessageBoxIcon]::Information
+            )
+
+            if ($result -ne [System.Windows.Forms.DialogResult]::OK) {
+                return
+            }
+
+            # Show folder browser
+            $folderBrowser = New-Object System.Windows.Forms.FolderBrowserDialog
+            $folderBrowser.Description = "Select the directory where the Codex agent can write files"
+            $folderBrowser.ShowNewFolderButton = $true
+
+            # Try to set initial directory to common locations
+            if (Test-Path "$env:USERPROFILE\Projects") {
+                $folderBrowser.SelectedPath = "$env:USERPROFILE\Projects"
+            } elseif (Test-Path "$env:USERPROFILE\Documents") {
+                $folderBrowser.SelectedPath = "$env:USERPROFILE\Documents"
+            }
+
+            $folderResult = $folderBrowser.ShowDialog()
+
+            if ($folderResult -ne [System.Windows.Forms.DialogResult]::OK) {
+                return
+            }
+
+            $selectedDir = $folderBrowser.SelectedPath
+
+            # Spawn CodexService in new window at selected directory
+            Start-Process cmd.exe -ArgumentList "/k", "cd /d `"$selectedDir`" && powershell -ExecutionPolicy Bypass -File `"$path`""
+
+        } elseif ($info.NewWindow) {
             # Spawn in new command prompt window
             Start-Process cmd.exe -ArgumentList "/k", "powershell", "-ExecutionPolicy", "Bypass", "-File", "`"$path`""
         } else {
@@ -181,7 +232,7 @@ foreach ($script in $scripts) {
 
 # Exit button
 $exitButton = New-Object System.Windows.Forms.Button
-$exitButton.Size = New-Object System.Drawing.Size(450, 35)
+$exitButton.Size = New-Object System.Drawing.Size($buttonWidth, 35)
 $exitButton.Location = New-Object System.Drawing.Point(20, ($yPos + 10))
 $exitButton.FlatStyle = "Flat"
 $exitButton.FlatAppearance.BorderSize = 1
