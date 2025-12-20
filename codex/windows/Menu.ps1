@@ -195,10 +195,10 @@ function Show-SetupMenu {
             PdfViewer = $true
         },
         @{
-            Name = "Test-Pipe.ps1"
-            Label = "Test Pipe Connection"
-            Description = "Low-level Named Pipe connectivity test"
-            Color = [System.Drawing.Color]::FromArgb(121, 85, 72)
+            Name = "demo.ps1"
+            Label = "Run Demo"
+            Description = "Interactive demo - test the service with a sample request"
+            Color = [System.Drawing.Color]::FromArgb(25, 118, 210)
         }
     )
 
@@ -496,11 +496,6 @@ $scripts = @(
         Color = [System.Drawing.Color]::FromArgb(46, 125, 50)  # Green
     },
     @{
-        Name = "demo.ps1"
-        Description = "Interactive demo - test the service with a sample request"
-        Color = [System.Drawing.Color]::FromArgb(25, 118, 210)  # Blue
-    },
-    @{
         Name = "CodexClient.ps1"
         Description = "Send a custom prompt to the Codex agent and view the response"
         PromptDialog = $true
@@ -508,7 +503,7 @@ $scripts = @(
     },
     @{
         Name = "Summarize-Files.ps1"
-        Description = "Batch summarize files listed in a CSV using AI"
+        Description = "Reads file paths from CSV, extracts text, sends to CodexService for AI summary, appends results"
         Color = [System.Drawing.Color]::FromArgb(156, 39, 176)  # Purple
     }
 )

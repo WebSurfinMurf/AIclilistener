@@ -275,7 +275,6 @@ codex/windows/
 ├── Install-Skill.ps1     # Deploy skill to Codex
 ├── Install-PdfToText.ps1 # Install PDF text extraction
 ├── Test-PdfExtract.ps1   # Test PDF extraction
-├── Test-Pipe.ps1         # Low-level pipe connectivity test
 ├── lib/
 │   └── Get-FileText.ps1  # Multi-format text extraction
 └── skill/
