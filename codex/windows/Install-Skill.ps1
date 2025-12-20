@@ -79,16 +79,22 @@ if ($skillsEnabled) {
 
     $enable = Read-Host "Add skills config now? (Y/n)"
     if ($enable -ne 'n' -and $enable -ne 'N') {
-        $skillsConfig = @"
-
-[experimental]
-skills = true
-"@
         if ($configExists) {
-            Add-Content -Path $configPath -Value $skillsConfig
+            $configContent = Get-Content $configPath -Raw
+
+            # Check if [experimental] section exists
+            if ($configContent -match '\[experimental\]') {
+                # Add skills = true under existing [experimental] section
+                $configContent = $configContent -replace '(\[experimental\])', "`$1`nskills = true"
+                Set-Content -Path $configPath -Value $configContent -NoNewline
+            } else {
+                # Append new [experimental] section
+                Add-Content -Path $configPath -Value "`n[experimental]`nskills = true"
+            }
         } else {
+            # Create new config file
             New-Item -Path (Split-Path $configPath) -ItemType Directory -Force -ErrorAction SilentlyContinue | Out-Null
-            Set-Content -Path $configPath -Value $skillsConfig.TrimStart()
+            Set-Content -Path $configPath -Value "[experimental]`nskills = true"
         }
         Write-Host "[OK] Skills enabled in config.toml" -ForegroundColor Green
     }
