@@ -62,4 +62,5 @@ Write-Host "Permissions: Full disk read, write to this folder" -ForegroundColor 
 Write-Host ""
 
 # Launch codex with full disk read and folder write access
-& codex --full-auto --sandbox-permissions="disk-full-read-access"
+$escapedDir = $selectedDir -replace '\\', '\\\\'
+& codex --full-auto -c 'sandbox_permissions=["disk-full-read-access"]' -c "writable_roots=[`"$escapedDir`"]"
