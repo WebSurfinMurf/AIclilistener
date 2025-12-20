@@ -284,9 +284,9 @@ function Get-PdfText {
         foreach ($modeArgs in $modes) {
             try {
                 $tempOutput = Join-Path $env:TEMP "pdfextract_$(Get-Random).txt"
-                $args = $modeArgs + @($FilePath, $tempOutput)
+                $cmdArgs = $modeArgs + @($FilePath, $tempOutput)
 
-                $process = Start-Process -FilePath $pdftotextPath -ArgumentList $args -Wait -NoNewWindow -PassThru
+                $process = Start-Process -FilePath $pdftotextPath -ArgumentList $cmdArgs -Wait -NoNewWindow -PassThru
 
                 if ($process.ExitCode -eq 0 -and (Test-Path $tempOutput)) {
                     $text = Get-Content $tempOutput -Raw -Encoding UTF8
