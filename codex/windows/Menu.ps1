@@ -24,19 +24,28 @@ function Show-CodexClientDialog {
 
     # Create child form
     $dialog = New-Object System.Windows.Forms.Form
-    $dialog.Text = "Codex Client - Send Prompt"
-    $dialog.Size = New-Object System.Drawing.Size(700, 600)
+    $dialog.Text = "Codex Client - Test Interface"
+    $dialog.Size = New-Object System.Drawing.Size(700, 650)
     $dialog.StartPosition = "CenterParent"
     $dialog.FormBorderStyle = "FixedDialog"
     $dialog.MaximizeBox = $false
     $dialog.MinimizeBox = $false
     $dialog.BackColor = [System.Drawing.Color]::FromArgb(250, 250, 250)
 
+    # Info note at top
+    $noteLabel = New-Object System.Windows.Forms.Label
+    $noteLabel.Text = "This is a test interface for CodexClient.ps1. For interactive use, run 'codex' directly in your terminal for a better experience with full features."
+    $noteLabel.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+    $noteLabel.ForeColor = [System.Drawing.Color]::FromArgb(100, 100, 100)
+    $noteLabel.Location = New-Object System.Drawing.Point(20, 12)
+    $noteLabel.Size = New-Object System.Drawing.Size(645, 35)
+    $dialog.Controls.Add($noteLabel)
+
     # Prompt label
     $promptLabel = New-Object System.Windows.Forms.Label
     $promptLabel.Text = "Enter your prompt:"
     $promptLabel.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
-    $promptLabel.Location = New-Object System.Drawing.Point(20, 15)
+    $promptLabel.Location = New-Object System.Drawing.Point(20, 55)
     $promptLabel.Size = New-Object System.Drawing.Size(200, 25)
     $dialog.Controls.Add($promptLabel)
 
@@ -45,7 +54,7 @@ function Show-CodexClientDialog {
     $promptBox.Multiline = $true
     $promptBox.ScrollBars = "Vertical"
     $promptBox.Font = New-Object System.Drawing.Font("Consolas", 10)
-    $promptBox.Location = New-Object System.Drawing.Point(20, 45)
+    $promptBox.Location = New-Object System.Drawing.Point(20, 85)
     $promptBox.Size = New-Object System.Drawing.Size(645, 100)
     $promptBox.AcceptsReturn = $true
     $dialog.Controls.Add($promptBox)
@@ -54,7 +63,7 @@ function Show-CodexClientDialog {
     $sendButton = New-Object System.Windows.Forms.Button
     $sendButton.Text = "Send"
     $sendButton.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
-    $sendButton.Location = New-Object System.Drawing.Point(20, 155)
+    $sendButton.Location = New-Object System.Drawing.Point(20, 195)
     $sendButton.Size = New-Object System.Drawing.Size(100, 35)
     $sendButton.BackColor = [System.Drawing.Color]::FromArgb(25, 118, 210)
     $sendButton.ForeColor = [System.Drawing.Color]::White
@@ -68,7 +77,7 @@ function Show-CodexClientDialog {
     $statusLabel.Text = "Status: Ready"
     $statusLabel.Font = New-Object System.Drawing.Font("Segoe UI", 10)
     $statusLabel.ForeColor = [System.Drawing.Color]::FromArgb(100, 100, 100)
-    $statusLabel.Location = New-Object System.Drawing.Point(130, 162)
+    $statusLabel.Location = New-Object System.Drawing.Point(130, 202)
     $statusLabel.Size = New-Object System.Drawing.Size(400, 25)
     $dialog.Controls.Add($statusLabel)
 
@@ -76,7 +85,7 @@ function Show-CodexClientDialog {
     $responseLabel = New-Object System.Windows.Forms.Label
     $responseLabel.Text = "Response:"
     $responseLabel.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
-    $responseLabel.Location = New-Object System.Drawing.Point(20, 200)
+    $responseLabel.Location = New-Object System.Drawing.Point(20, 240)
     $responseLabel.Size = New-Object System.Drawing.Size(200, 25)
     $dialog.Controls.Add($responseLabel)
 
@@ -85,7 +94,7 @@ function Show-CodexClientDialog {
     $responseBox.Multiline = $true
     $responseBox.ScrollBars = "Both"
     $responseBox.Font = New-Object System.Drawing.Font("Consolas", 10)
-    $responseBox.Location = New-Object System.Drawing.Point(20, 230)
+    $responseBox.Location = New-Object System.Drawing.Point(20, 270)
     $responseBox.Size = New-Object System.Drawing.Size(645, 250)
     $responseBox.ReadOnly = $true
     $responseBox.BackColor = [System.Drawing.Color]::White
@@ -96,7 +105,7 @@ function Show-CodexClientDialog {
     $clearButton = New-Object System.Windows.Forms.Button
     $clearButton.Text = "Clear"
     $clearButton.Font = New-Object System.Drawing.Font("Segoe UI", 10)
-    $clearButton.Location = New-Object System.Drawing.Point(20, 495)
+    $clearButton.Location = New-Object System.Drawing.Point(20, 535)
     $clearButton.Size = New-Object System.Drawing.Size(100, 35)
     $clearButton.BackColor = [System.Drawing.Color]::FromArgb(255, 152, 0)
     $clearButton.ForeColor = [System.Drawing.Color]::White
@@ -109,7 +118,7 @@ function Show-CodexClientDialog {
     $exitDialogButton = New-Object System.Windows.Forms.Button
     $exitDialogButton.Text = "Close"
     $exitDialogButton.Font = New-Object System.Drawing.Font("Segoe UI", 10)
-    $exitDialogButton.Location = New-Object System.Drawing.Point(565, 495)
+    $exitDialogButton.Location = New-Object System.Drawing.Point(565, 535)
     $exitDialogButton.Size = New-Object System.Drawing.Size(100, 35)
     $exitDialogButton.BackColor = [System.Drawing.Color]::FromArgb(120, 120, 120)
     $exitDialogButton.ForeColor = [System.Drawing.Color]::White
