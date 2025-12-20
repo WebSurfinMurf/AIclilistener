@@ -33,13 +33,16 @@
 .EXAMPLE
     .\Summarize-Files.ps1 -CsvPath "files.csv" -Resume
 
+.EXAMPLE
+    .\Summarize-Files.ps1
+    # Opens file picker dialog to select CSV
+
 .NOTES
     Requires CodexService.ps1 to be running
-    Version: 1.2.3 - MaxChars 50k default, PDF text extraction via Word
+    Version: 1.3.0 - File picker dialog when no CSV specified
 #>
 
 param(
-    [Parameter(Mandatory=$true)]
     [string]$CsvPath,
 
     [string]$OutputPath,
@@ -54,6 +57,26 @@ param(
 
     [switch]$Resume
 )
+
+# If no CSV path provided, show file picker dialog
+if (-not $CsvPath) {
+    Add-Type -AssemblyName System.Windows.Forms
+
+    $dialog = New-Object System.Windows.Forms.OpenFileDialog
+    $dialog.Title = "Select CSV file with file paths to summarize"
+    $dialog.Filter = "CSV files (*.csv)|*.csv|All files (*.*)|*.*"
+    $dialog.InitialDirectory = [Environment]::GetFolderPath('Desktop')
+
+    $result = $dialog.ShowDialog()
+
+    if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
+        $CsvPath = $dialog.FileName
+        Write-Host "[INFO] Selected: $CsvPath" -ForegroundColor Green
+    } else {
+        Write-Host "[INFO] No file selected. Exiting." -ForegroundColor Yellow
+        exit 0
+    }
+}
 
 # Ensure UTF-8
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
