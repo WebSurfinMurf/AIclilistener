@@ -64,19 +64,27 @@ if (-not $CsvPath) {
 
     # Show explanation dialog first
     $explanation = @"
-This tool summarizes files listed in a CSV.
+This tool reads a CSV and summarizes each file using AI.
 
-EXPECTED CSV FORMAT:
-First column should contain file paths.
+REQUIRED:
+- First column must contain FULL PATHS to files
+  (e.g., C:\Documents\report.docx)
 
-EXAMPLE CSV:
+OPTIONAL:
+- Additional columns (Category, Notes, etc.) are kept as-is
+
+OUTPUT:
+- A new "Summary" column will be added to your CSV
+
+EXAMPLE INPUT:
 FilePath,Category
 C:\Documents\report.docx,Reports
 C:\Code\app.py,Code
-C:\Data\sales.xlsx,Excel
 
-SUPPORTED FILES:
-Text, Word, Excel, PowerPoint, PDF, and more.
+EXAMPLE OUTPUT:
+FilePath,Category,Summary
+C:\Documents\report.docx,Reports,"A quarterly sales report..."
+C:\Code\app.py,Code,"A Python script that..."
 
 Click OK to select your CSV file.
 "@
