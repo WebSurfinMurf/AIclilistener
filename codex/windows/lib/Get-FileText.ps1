@@ -282,13 +282,15 @@ function Get-PdfText {
         )
 
         foreach ($modeArgs in $modes) {
+            $tempOutput = $null
             try {
                 $tempOutput = Join-Path $env:TEMP "pdfextract_$(Get-Random).txt"
-                $cmdArgs = $modeArgs + @($FilePath, $tempOutput)
 
-                $process = Start-Process -FilePath $pdftotextPath -ArgumentList $cmdArgs -Wait -NoNewWindow -PassThru
+                # Use & operator with splatting (same as Test-PdfExtract.ps1)
+                $output = & $pdftotextPath @modeArgs $FilePath $tempOutput 2>&1
+                $exitCode = $LASTEXITCODE
 
-                if ($process.ExitCode -eq 0 -and (Test-Path $tempOutput)) {
+                if ($exitCode -eq 0 -and (Test-Path $tempOutput)) {
                     $text = Get-Content $tempOutput -Raw -Encoding UTF8
                     Remove-Item $tempOutput -Force -ErrorAction SilentlyContinue
 
@@ -299,9 +301,9 @@ function Get-PdfText {
                         }
                     }
                 }
-                if (Test-Path $tempOutput) { Remove-Item $tempOutput -Force -ErrorAction SilentlyContinue }
+                if ($tempOutput -and (Test-Path $tempOutput)) { Remove-Item $tempOutput -Force -ErrorAction SilentlyContinue }
             } catch {
-                if (Test-Path $tempOutput) { Remove-Item $tempOutput -Force -ErrorAction SilentlyContinue }
+                if ($tempOutput -and (Test-Path $tempOutput)) { Remove-Item $tempOutput -Force -ErrorAction SilentlyContinue }
             }
         }
 
