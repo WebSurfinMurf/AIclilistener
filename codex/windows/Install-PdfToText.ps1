@@ -130,27 +130,35 @@ Write-Host ""
 Write-Host "pdftotext location:" -ForegroundColor Cyan
 Write-Host "  $pdftotextPath" -ForegroundColor White
 Write-Host ""
-Write-Host "To use manually:" -ForegroundColor Cyan
-Write-Host "  & `"$pdftotextPath`" `"input.pdf`" `"output.txt`"" -ForegroundColor White
-Write-Host ""
-Write-Host "To add to PATH for this session:" -ForegroundColor Cyan
-Write-Host "  `$env:PATH += `";$binDir`"" -ForegroundColor White
-Write-Host ""
-Write-Host "To add to PATH permanently (user level):" -ForegroundColor Cyan
-Write-Host "  [Environment]::SetEnvironmentVariable('PATH', `$env:PATH + ';$binDir', 'User')" -ForegroundColor White
-Write-Host ""
-
-# Offer to add to PATH
-$addToPath = Read-Host "Add to PATH for this session? (Y/n)"
-if ($addToPath -ne 'n' -and $addToPath -ne 'N') {
-    $env:PATH += ";$binDir"
-    Write-Host "[OK] Added to PATH for this session" -ForegroundColor Green
-    Write-Host ""
-    Write-Host "You can now run: pdftotext --help" -ForegroundColor Cyan
-}
 
 # Save path to a config file for other scripts to find
 $configPath = Join-Path (Split-Path $MyInvocation.MyCommand.Path) ".pdftotext-path"
 $pdftotextPath | Out-File -FilePath $configPath -Encoding UTF8 -NoNewline
+Write-Host "[OK] Path saved to config file" -ForegroundColor Green
+Write-Host "    AIclilistener scripts will find pdftotext automatically." -ForegroundColor Green
 Write-Host ""
-Write-Host "[INFO] Path saved to $configPath for other scripts" -ForegroundColor Gray
+
+# Optional: Add to PATH
+Write-Host "----------------------------------------" -ForegroundColor Yellow
+Write-Host "  OPTIONAL: Add to PATH" -ForegroundColor Yellow
+Write-Host "----------------------------------------" -ForegroundColor Yellow
+Write-Host ""
+Write-Host "NOTE: This is OPTIONAL. AIclilistener already finds pdftotext" -ForegroundColor Cyan
+Write-Host "      via the config file saved above. Only needed if you want" -ForegroundColor Cyan
+Write-Host "      to run 'pdftotext' directly from any terminal." -ForegroundColor Cyan
+Write-Host ""
+Write-Host "WARNING: On corporate-managed laptops, modifying PATH may be" -ForegroundColor Yellow
+Write-Host "         blocked by IT policies or reset by Group Policy." -ForegroundColor Yellow
+Write-Host ""
+$addToPath = Read-Host "Add to PATH for this session? (y/N)"
+if ($addToPath -eq 'y' -or $addToPath -eq 'Y') {
+    $env:PATH += ";$binDir"
+    Write-Host "[OK] Added to PATH for this session" -ForegroundColor Green
+    Write-Host "You can now run: pdftotext --help" -ForegroundColor Cyan
+} else {
+    Write-Host "[SKIP] PATH not modified" -ForegroundColor Gray
+}
+Write-Host ""
+
+Write-Host "To use manually (without PATH):" -ForegroundColor Cyan
+Write-Host "  & `"$pdftotextPath`" `"input.pdf`" `"output.txt`"" -ForegroundColor White
