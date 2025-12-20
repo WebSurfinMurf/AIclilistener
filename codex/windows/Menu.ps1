@@ -505,6 +505,7 @@ $scripts = @(
         Name = "Summarize-Files.ps1"
         Description = "Reads file paths from CSV, extracts text, sends to CodexService for AI summary, appends results"
         Color = [System.Drawing.Color]::FromArgb(156, 39, 176)  # Purple
+        Height = 56  # 25% taller for longer description
     }
 )
 
@@ -552,7 +553,8 @@ foreach ($script in $scripts) {
 
     # Create button
     $button = New-Object System.Windows.Forms.Button
-    $button.Size = New-Object System.Drawing.Size($buttonWidth, $buttonHeight)
+    $btnHeight = if ($script.Height) { $script.Height } else { $buttonHeight }
+    $button.Size = New-Object System.Drawing.Size($buttonWidth, $btnHeight)
     $button.Location = New-Object System.Drawing.Point(20, $yPos)
     $button.FlatStyle = "Flat"
     $button.FlatAppearance.BorderSize = 0
@@ -648,7 +650,7 @@ Click OK to select your working directory.
     })
 
     $form.Controls.Add($button)
-    $yPos += $buttonHeight + $buttonSpacing
+    $yPos += $btnHeight + $buttonSpacing
 }
 
 # Exit button
