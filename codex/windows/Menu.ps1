@@ -167,8 +167,9 @@ function Show-CodexClientDialog {
             $dialog.Refresh()
 
             # Save prompt to temp file to avoid quoting issues
+            # Use WriteAllText to avoid BOM issues with UTF8
             $tempFile = [System.IO.Path]::GetTempFileName()
-            $prompt | Out-File -FilePath $tempFile -Encoding UTF8 -NoNewline
+            [System.IO.File]::WriteAllText($tempFile, $prompt, [System.Text.UTF8Encoding]::new($false))
 
             # Call CodexClient.ps1 reading prompt from file
             $cmd = @"
@@ -202,12 +203,15 @@ Remove-Item '$tempFile' -Force -ErrorAction SilentlyContinue
             }
 
             if ($gotResponse) {
-                $responseBox.Text = $responseText
+                # Clean up response - remove BOM and trim
+                $cleanResponse = $responseText -replace '^\xEF\xBB\xBF', '' -replace '^\uFEFF', ''
+                $responseBox.Text = $cleanResponse.Trim()
                 $statusLabel.Text = "Status: Complete"
                 $statusLabel.ForeColor = [System.Drawing.Color]::FromArgb(46, 125, 50)
             } else {
                 # Show raw output if no JSON found
-                $responseBox.Text = ($output | Out-String)
+                $rawOutput = ($output | Out-String) -replace '^\xEF\xBB\xBF', '' -replace '^\uFEFF', ''
+                $responseBox.Text = $rawOutput.Trim()
                 $statusLabel.Text = "Status: Complete (raw output)"
                 $statusLabel.ForeColor = [System.Drawing.Color]::FromArgb(46, 125, 50)
             }
