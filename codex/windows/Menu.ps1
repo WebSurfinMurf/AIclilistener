@@ -16,56 +16,238 @@ Add-Type -AssemblyName System.Drawing
 # Get script directory
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 
+# Function to show the Codex Client prompt dialog
+function Show-CodexClientDialog {
+    param([System.Windows.Forms.Form]$ParentForm)
+
+    $clientPath = Join-Path $scriptDir "CodexClient.ps1"
+
+    # Create child form
+    $dialog = New-Object System.Windows.Forms.Form
+    $dialog.Text = "Codex Client - Send Prompt"
+    $dialog.Size = New-Object System.Drawing.Size(700, 600)
+    $dialog.StartPosition = "CenterParent"
+    $dialog.FormBorderStyle = "FixedDialog"
+    $dialog.MaximizeBox = $false
+    $dialog.MinimizeBox = $false
+    $dialog.BackColor = [System.Drawing.Color]::FromArgb(250, 250, 250)
+
+    # Prompt label
+    $promptLabel = New-Object System.Windows.Forms.Label
+    $promptLabel.Text = "Enter your prompt:"
+    $promptLabel.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+    $promptLabel.Location = New-Object System.Drawing.Point(20, 15)
+    $promptLabel.Size = New-Object System.Drawing.Size(200, 25)
+    $dialog.Controls.Add($promptLabel)
+
+    # Prompt text box (multiline)
+    $promptBox = New-Object System.Windows.Forms.TextBox
+    $promptBox.Multiline = $true
+    $promptBox.ScrollBars = "Vertical"
+    $promptBox.Font = New-Object System.Drawing.Font("Consolas", 10)
+    $promptBox.Location = New-Object System.Drawing.Point(20, 45)
+    $promptBox.Size = New-Object System.Drawing.Size(645, 100)
+    $promptBox.AcceptsReturn = $true
+    $dialog.Controls.Add($promptBox)
+
+    # Send button
+    $sendButton = New-Object System.Windows.Forms.Button
+    $sendButton.Text = "Send"
+    $sendButton.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+    $sendButton.Location = New-Object System.Drawing.Point(20, 155)
+    $sendButton.Size = New-Object System.Drawing.Size(100, 35)
+    $sendButton.BackColor = [System.Drawing.Color]::FromArgb(25, 118, 210)
+    $sendButton.ForeColor = [System.Drawing.Color]::White
+    $sendButton.FlatStyle = "Flat"
+    $sendButton.FlatAppearance.BorderSize = 0
+    $sendButton.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $dialog.Controls.Add($sendButton)
+
+    # Status label
+    $statusLabel = New-Object System.Windows.Forms.Label
+    $statusLabel.Text = "Status: Ready"
+    $statusLabel.Font = New-Object System.Drawing.Font("Segoe UI", 10)
+    $statusLabel.ForeColor = [System.Drawing.Color]::FromArgb(100, 100, 100)
+    $statusLabel.Location = New-Object System.Drawing.Point(130, 162)
+    $statusLabel.Size = New-Object System.Drawing.Size(400, 25)
+    $dialog.Controls.Add($statusLabel)
+
+    # Response label
+    $responseLabel = New-Object System.Windows.Forms.Label
+    $responseLabel.Text = "Response:"
+    $responseLabel.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+    $responseLabel.Location = New-Object System.Drawing.Point(20, 200)
+    $responseLabel.Size = New-Object System.Drawing.Size(200, 25)
+    $dialog.Controls.Add($responseLabel)
+
+    # Response text box (multiline, read-only)
+    $responseBox = New-Object System.Windows.Forms.TextBox
+    $responseBox.Multiline = $true
+    $responseBox.ScrollBars = "Both"
+    $responseBox.Font = New-Object System.Drawing.Font("Consolas", 10)
+    $responseBox.Location = New-Object System.Drawing.Point(20, 230)
+    $responseBox.Size = New-Object System.Drawing.Size(645, 250)
+    $responseBox.ReadOnly = $true
+    $responseBox.BackColor = [System.Drawing.Color]::White
+    $responseBox.WordWrap = $true
+    $dialog.Controls.Add($responseBox)
+
+    # Clear button
+    $clearButton = New-Object System.Windows.Forms.Button
+    $clearButton.Text = "Clear"
+    $clearButton.Font = New-Object System.Drawing.Font("Segoe UI", 10)
+    $clearButton.Location = New-Object System.Drawing.Point(20, 495)
+    $clearButton.Size = New-Object System.Drawing.Size(100, 35)
+    $clearButton.BackColor = [System.Drawing.Color]::FromArgb(255, 152, 0)
+    $clearButton.ForeColor = [System.Drawing.Color]::White
+    $clearButton.FlatStyle = "Flat"
+    $clearButton.FlatAppearance.BorderSize = 0
+    $clearButton.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $dialog.Controls.Add($clearButton)
+
+    # Exit button
+    $exitDialogButton = New-Object System.Windows.Forms.Button
+    $exitDialogButton.Text = "Close"
+    $exitDialogButton.Font = New-Object System.Drawing.Font("Segoe UI", 10)
+    $exitDialogButton.Location = New-Object System.Drawing.Point(565, 495)
+    $exitDialogButton.Size = New-Object System.Drawing.Size(100, 35)
+    $exitDialogButton.BackColor = [System.Drawing.Color]::FromArgb(120, 120, 120)
+    $exitDialogButton.ForeColor = [System.Drawing.Color]::White
+    $exitDialogButton.FlatStyle = "Flat"
+    $exitDialogButton.FlatAppearance.BorderSize = 0
+    $exitDialogButton.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $dialog.Controls.Add($exitDialogButton)
+
+    # Clear button click
+    $clearButton.Add_Click({
+        $promptBox.Text = ""
+        $responseBox.Text = ""
+        $statusLabel.Text = "Status: Ready"
+        $statusLabel.ForeColor = [System.Drawing.Color]::FromArgb(100, 100, 100)
+        $promptBox.Focus()
+    })
+
+    # Exit button click
+    $exitDialogButton.Add_Click({
+        $dialog.Close()
+    })
+
+    # Send button click
+    $sendButton.Add_Click({
+        $prompt = $promptBox.Text.Trim()
+
+        if ([string]::IsNullOrEmpty($prompt)) {
+            $statusLabel.Text = "Status: Please enter a prompt"
+            $statusLabel.ForeColor = [System.Drawing.Color]::FromArgb(200, 0, 0)
+            return
+        }
+
+        # Disable send button during request
+        $sendButton.Enabled = $false
+        $responseBox.Text = ""
+
+        # Update status
+        $statusLabel.Text = "Status: Sending prompt..."
+        $statusLabel.ForeColor = [System.Drawing.Color]::FromArgb(25, 118, 210)
+        $dialog.Refresh()
+
+        try {
+            # Update status
+            $statusLabel.Text = "Status: Waiting for response..."
+            $statusLabel.ForeColor = [System.Drawing.Color]::FromArgb(156, 39, 176)
+            $dialog.Refresh()
+
+            # Call CodexClient.ps1 and capture output
+            $output = & powershell -ExecutionPolicy Bypass -File $clientPath -Prompt $prompt -Raw 2>&1
+
+            # Parse response
+            $responseText = ""
+            $gotResponse = $false
+
+            foreach ($line in $output) {
+                $lineStr = $line.ToString()
+                if ($lineStr -match '^\{') {
+                    try {
+                        $json = $lineStr | ConvertFrom-Json
+                        if ($json.status -eq "success" -and $json.result.message) {
+                            $responseText = $json.result.message
+                            $gotResponse = $true
+                        } elseif ($json.status -eq "error") {
+                            $responseText = "ERROR: $($json.error)"
+                            $gotResponse = $true
+                        }
+                    } catch {
+                        # Not valid JSON
+                    }
+                }
+            }
+
+            if ($gotResponse) {
+                $responseBox.Text = $responseText
+                $statusLabel.Text = "Status: Complete"
+                $statusLabel.ForeColor = [System.Drawing.Color]::FromArgb(46, 125, 50)
+            } else {
+                # Show raw output if no JSON found
+                $responseBox.Text = ($output | Out-String)
+                $statusLabel.Text = "Status: Complete (raw output)"
+                $statusLabel.ForeColor = [System.Drawing.Color]::FromArgb(46, 125, 50)
+            }
+
+        } catch {
+            $statusLabel.Text = "Status: Error - $($_.Exception.Message)"
+            $statusLabel.ForeColor = [System.Drawing.Color]::FromArgb(200, 0, 0)
+            $responseBox.Text = $_.Exception.Message
+        } finally {
+            $sendButton.Enabled = $true
+        }
+    })
+
+    # Show dialog as child of parent
+    [void]$dialog.ShowDialog($ParentForm)
+}
+
 # Define scripts with descriptions
 $scripts = @(
     @{
         Name = "CodexService.ps1"
         Description = "Start a Codex AI agent that accepts JSON requests via Named Pipe"
-        NewWindow = $true
         SelectDirectory = $true
         Color = [System.Drawing.Color]::FromArgb(46, 125, 50)  # Green
     },
     @{
         Name = "demo.ps1"
         Description = "Interactive demo - test the service with a sample request"
-        NewWindow = $false
         Color = [System.Drawing.Color]::FromArgb(25, 118, 210)  # Blue
     },
     @{
         Name = "CodexClient.ps1"
-        Description = "Send a ping command to verify the service is running"
-        NewWindow = $false
-        Args = "-Command ping"
+        Description = "Send a custom prompt to the Codex agent and view the response"
+        PromptDialog = $true
         Color = [System.Drawing.Color]::FromArgb(25, 118, 210)  # Blue
     },
     @{
         Name = "Summarize-Files.ps1"
         Description = "Batch summarize files listed in a CSV using AI"
-        NewWindow = $false
         Color = [System.Drawing.Color]::FromArgb(156, 39, 176)  # Purple
     },
     @{
         Name = "Install-Skill.ps1"
         Description = "Install the AIclilistener skill so Codex can use this service automatically"
-        NewWindow = $false
         Color = [System.Drawing.Color]::FromArgb(255, 152, 0)  # Orange
     },
     @{
         Name = "Install-PdfToText.ps1"
         Description = "Install pdftotext (Poppler) to enable PDF text extraction"
-        NewWindow = $false
         Color = [System.Drawing.Color]::FromArgb(255, 152, 0)  # Orange
     },
     @{
         Name = "Test-PdfExtract.ps1"
         Description = "Test PDF text extraction on a specific file"
-        NewWindow = $false
         Color = [System.Drawing.Color]::FromArgb(121, 85, 72)  # Brown
     },
     @{
         Name = "Test-Pipe.ps1"
         Description = "Low-level Named Pipe connectivity test"
-        NewWindow = $false
         Color = [System.Drawing.Color]::FromArgb(121, 85, 72)  # Brown
     }
 )
@@ -136,7 +318,11 @@ foreach ($script in $scripts) {
         $info = $sender.Tag
         $path = Join-Path $scriptDir $info.Name
 
-        if ($info.SelectDirectory) {
+        if ($info.PromptDialog) {
+            # Show the Codex Client prompt dialog
+            Show-CodexClientDialog -ParentForm $form
+
+        } elseif ($info.SelectDirectory) {
             # Special handling for CodexService - show explanation and folder picker
             $explanation = @"
 Select a working directory for the Codex agent.
@@ -186,14 +372,8 @@ Click OK to select your working directory.
             Start-Process cmd.exe -ArgumentList "/k", "cd /d `"$selectedDir`" && powershell -ExecutionPolicy Bypass -File `"$path`""
 
         } else {
-            # Spawn all scripts in new command prompt window (menu stays open)
-            if ($info.Args) {
-                # Script with arguments - add pause at end
-                Start-Process cmd.exe -ArgumentList "/k", "powershell -ExecutionPolicy Bypass -File `"$path`" $($info.Args) && echo. && echo Press Enter to close... && pause >nul"
-            } else {
-                # Script without arguments - add pause at end
-                Start-Process cmd.exe -ArgumentList "/k", "powershell -ExecutionPolicy Bypass -File `"$path`" && echo. && echo Press Enter to close... && pause >nul"
-            }
+            # Spawn script in new command prompt window (menu stays open)
+            Start-Process cmd.exe -ArgumentList "/k", "powershell -ExecutionPolicy Bypass -File `"$path`" && echo. && echo Press Enter to close... && pause >nul"
         }
     })
 
