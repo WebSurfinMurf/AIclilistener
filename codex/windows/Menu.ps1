@@ -159,10 +159,15 @@ foreach ($script in $scripts) {
         }
     })
 
-    # Hover effects
+    # Hover effects - lighten color manually
     $button.Add_MouseEnter({
         param($sender, $e)
-        $sender.BackColor = [System.Drawing.ControlPaint]::Light($sender.BackColor)
+        $c = $sender.BackColor
+        $sender.BackColor = [System.Drawing.Color]::FromArgb(
+            [Math]::Min(255, $c.R + 30),
+            [Math]::Min(255, $c.G + 30),
+            [Math]::Min(255, $c.B + 30)
+        )
     })
 
     $button.Add_MouseLeave({
@@ -177,7 +182,7 @@ foreach ($script in $scripts) {
 # Exit button
 $exitButton = New-Object System.Windows.Forms.Button
 $exitButton.Size = New-Object System.Drawing.Size(450, 35)
-$exitButton.Location = New-Object System.Drawing.Point(20, $yPos + 10)
+$exitButton.Location = New-Object System.Drawing.Point(20, ($yPos + 10))
 $exitButton.FlatStyle = "Flat"
 $exitButton.FlatAppearance.BorderSize = 1
 $exitButton.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(200, 200, 200)
