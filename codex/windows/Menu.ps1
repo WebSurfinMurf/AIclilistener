@@ -579,7 +579,7 @@ $buttonWidth = 565
 
 foreach ($script in $scripts) {
     # For non-Setup items, check if script exists
-    if (-not $script.SetupMenu) {
+    if (-not $script.SetupMenu -and -not $script.LaunchCodex) {
         $scriptPath = Join-Path $scriptDir $script.Name
         if (-not (Test-Path $scriptPath)) {
             continue
