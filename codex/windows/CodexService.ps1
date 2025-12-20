@@ -24,7 +24,7 @@
 
 .NOTES
     Author: AI CLI Listener Project
-    Version: 1.4.3 - Fix Ctrl+C to properly exit service
+    Version: 1.5.0 - Read entire drive, write to working directory only
     Requires: OpenAI Codex CLI installed and on PATH
 
     IMPORTANT: PowerShell 5.1 has a known bug where multiline strings passed
@@ -81,7 +81,34 @@ $script:Config = @{
     TimeoutSeconds = $TimeoutSeconds
     WorkingDirectory = $WorkingDirectory
     TempRoot = Join-Path $env:TEMP "codex-sessions"
-    Version = "1.4.3"
+    Version = "1.5.0"
+}
+
+# Prevent starting from root directory (security measure)
+function Test-IsRootDirectory {
+    param([string]$Path)
+    $resolved = (Resolve-Path $Path).Path.TrimEnd('\', '/')
+    # Check if it's a drive root like "C:" or "D:"
+    if ($resolved -match '^[A-Za-z]:$') {
+        return $true
+    }
+    # Check if it's the root of a UNC path
+    if ($resolved -match '^\\\\[^\\]+\\[^\\]+$') {
+        return $true
+    }
+    return $false
+}
+
+if (Test-IsRootDirectory $WorkingDirectory) {
+    Write-Host ""
+    Write-Host "[ERROR] Cannot start from root directory: $WorkingDirectory" -ForegroundColor Red
+    Write-Host "[ERROR] Please run from a project folder, not from a drive root (C:\, D:\, etc.)" -ForegroundColor Red
+    Write-Host ""
+    Write-Host "Example:" -ForegroundColor Yellow
+    Write-Host "  cd C:\Projects\MyApp" -ForegroundColor White
+    Write-Host "  .\CodexService.ps1" -ForegroundColor White
+    Write-Host ""
+    exit 1
 }
 
 # Ensure temp directory exists
@@ -273,26 +300,24 @@ function Invoke-CodexRequest {
         $codexArgs += "--skip-git-repo-check"
     }
 
-    # Sandbox mode
-    $sandbox = if ($options.sandbox) { $options.sandbox } else { "read-only" }
-    switch ($sandbox) {
-        "full-auto" { $codexArgs += "--full-auto" }
-        "workspace-write" { $codexArgs += "--sandbox"; $codexArgs += "workspace-write" }
-        "danger-full-access" { $codexArgs += "--sandbox"; $codexArgs += "danger-full-access" }
-        default { $codexArgs += "--sandbox"; $codexArgs += "read-only" }
-    }
+    # Sandbox mode - full-auto allows writing without prompts
+    $codexArgs += "--full-auto"
 
-    # Full disk read access - allows reading any file on the machine
-    # Never ask for approval - runs autonomously
-    # Both settings passed via -c config flag (exec subcommand doesn't support -a directly)
+    # Permissions:
+    # - disk-full-read-access: Read any file on the machine
+    # - writable_roots: Allow writing to the service's working directory
+    # - approval_policy: Never ask for approval (autonomous operation)
+    $escapedWorkDir = $script:Config.WorkingDirectory -replace '\\', '\\\\'
     $codexArgs += "-c"
     $codexArgs += 'sandbox_permissions=["disk-full-read-access"]'
     $codexArgs += "-c"
+    $codexArgs += "writable_roots=[`"$escapedWorkDir`"]"
+    $codexArgs += "-c"
     $codexArgs += 'approval_policy="never"'
 
-    # Set working root to system drive (C:\) so codex can access all files
+    # Set working root to the service's working directory
     $codexArgs += "-C"
-    $codexArgs += "$env:SystemDrive\"
+    $codexArgs += $script:Config.WorkingDirectory
 
     # Save prompt to temp file
     $promptText = $Request.prompt
@@ -503,6 +528,8 @@ function Invoke-ServiceCommand {
                 version = $script:Config.Version
                 pipe_name = $script:Config.PipeName
                 working_directory = $script:Config.WorkingDirectory
+                writable_directory = $script:Config.WorkingDirectory
+                read_access = "entire drive"
                 temp_root = $script:Config.TempRoot
                 uptime_seconds = [int]((Get-Date) - $script:StartTime).TotalSeconds
             } | ConvertTo-Json -Compress
@@ -552,6 +579,8 @@ function Start-CodexService {
     Write-Host "[CONFIG] Pipe Name: \\.\pipe\$($script:Config.PipeName)" -ForegroundColor Yellow
     Write-Host "[CONFIG] Timeout: $($script:Config.TimeoutSeconds) seconds" -ForegroundColor Yellow
     Write-Host "[CONFIG] Working Dir: $($script:Config.WorkingDirectory)" -ForegroundColor Yellow
+    Write-Host "[CONFIG] Read Access: Entire drive (read-only)" -ForegroundColor Yellow
+    Write-Host "[CONFIG] Write Access: $($script:Config.WorkingDirectory) (no prompts)" -ForegroundColor Yellow
     Write-Host "[CONFIG] Temp Root: $($script:Config.TempRoot)" -ForegroundColor Yellow
     if ($script:VerboseLogging) {
         Write-Host "[CONFIG] Verbose Logging: ENABLED" -ForegroundColor Magenta
