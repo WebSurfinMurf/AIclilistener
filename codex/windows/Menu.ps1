@@ -231,27 +231,68 @@ function Show-SetupMenu {
             if ($info.PdfViewer) {
                 Show-PdfExtractDialog -ParentForm $setupDialog
             } elseif ($info.AboutDialog) {
-                $aboutText = @"
-AIclilistener - Codex CLI Named Pipe Service
+                $aboutDialog = New-Object System.Windows.Forms.Form
+                $aboutDialog.Text = "About AIclilistener"
+                $aboutDialog.Size = New-Object System.Drawing.Size(480, 320)
+                $aboutDialog.StartPosition = "CenterParent"
+                $aboutDialog.FormBorderStyle = "FixedDialog"
+                $aboutDialog.MaximizeBox = $false
+                $aboutDialog.MinimizeBox = $false
+                $aboutDialog.BackColor = [System.Drawing.Color]::White
 
-A PowerShell-based service that wraps OpenAI Codex CLI, enabling JSON requests via Windows Named Pipes. Designed for corporate Windows environments with no additional dependencies.
+                $titleLbl = New-Object System.Windows.Forms.Label
+                $titleLbl.Text = "AIclilistener - Codex CLI Named Pipe Service"
+                $titleLbl.Font = New-Object System.Drawing.Font("Segoe UI", 11, [System.Drawing.FontStyle]::Bold)
+                $titleLbl.Location = New-Object System.Drawing.Point(20, 20)
+                $titleLbl.Size = New-Object System.Drawing.Size(430, 25)
+                $aboutDialog.Controls.Add($titleLbl)
 
-FEATURES:
-- Named Pipe IPC (no firewall prompts, no admin required)
-- Context isolation (fresh process per request)
-- Multi-format file extraction (Office, PDF, text)
-- Batch file summarization via CSV
+                $descLbl = New-Object System.Windows.Forms.Label
+                $descLbl.Text = "A PowerShell-based service that wraps OpenAI Codex CLI, enabling JSON requests via Windows Named Pipes. Designed for corporate Windows environments with no additional dependencies."
+                $descLbl.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+                $descLbl.Location = New-Object System.Drawing.Point(20, 50)
+                $descLbl.Size = New-Object System.Drawing.Size(430, 45)
+                $aboutDialog.Controls.Add($descLbl)
 
-LICENSE: MIT
+                $featuresLbl = New-Object System.Windows.Forms.Label
+                $featuresLbl.Text = "FEATURES:`n- Named Pipe IPC (no firewall prompts, no admin required)`n- Context isolation (fresh process per request)`n- Multi-format file extraction (Office, PDF, text)`n- Batch file summarization via CSV"
+                $featuresLbl.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+                $featuresLbl.Location = New-Object System.Drawing.Point(20, 100)
+                $featuresLbl.Size = New-Object System.Drawing.Size(430, 80)
+                $aboutDialog.Controls.Add($featuresLbl)
 
-SOURCE: github.com/WebSurfinMurf/AIclilistener
-"@
-                [System.Windows.Forms.MessageBox]::Show(
-                    $aboutText,
-                    "About AIclilistener",
-                    [System.Windows.Forms.MessageBoxButtons]::OK,
-                    [System.Windows.Forms.MessageBoxIcon]::Information
-                )
+                $licenseLbl = New-Object System.Windows.Forms.Label
+                $licenseLbl.Text = "LICENSE: MIT"
+                $licenseLbl.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
+                $licenseLbl.Location = New-Object System.Drawing.Point(20, 185)
+                $licenseLbl.Size = New-Object System.Drawing.Size(430, 20)
+                $aboutDialog.Controls.Add($licenseLbl)
+
+                $sourceLink = New-Object System.Windows.Forms.LinkLabel
+                $sourceLink.Text = "SOURCE: github.com/WebSurfinMurf/AIclilistener (click to copy)"
+                $sourceLink.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+                $sourceLink.Location = New-Object System.Drawing.Point(20, 210)
+                $sourceLink.Size = New-Object System.Drawing.Size(430, 20)
+                $sourceLink.LinkColor = [System.Drawing.Color]::FromArgb(25, 118, 210)
+                $sourceLink.Add_LinkClicked({
+                    [System.Windows.Forms.Clipboard]::SetText("https://github.com/WebSurfinMurf/AIclilistener")
+                    $sourceLink.Text = "SOURCE: github.com/WebSurfinMurf/AIclilistener (copied!)"
+                })
+                $aboutDialog.Controls.Add($sourceLink)
+
+                $okBtn = New-Object System.Windows.Forms.Button
+                $okBtn.Text = "OK"
+                $okBtn.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+                $okBtn.Size = New-Object System.Drawing.Size(80, 30)
+                $okBtn.Location = New-Object System.Drawing.Point(190, 245)
+                $okBtn.BackColor = [System.Drawing.Color]::FromArgb(25, 118, 210)
+                $okBtn.ForeColor = [System.Drawing.Color]::White
+                $okBtn.FlatStyle = "Flat"
+                $okBtn.FlatAppearance.BorderSize = 0
+                $okBtn.Add_Click({ $aboutDialog.Close() })
+                $aboutDialog.Controls.Add($okBtn)
+
+                [void]$aboutDialog.ShowDialog($setupDialog)
             } else {
                 $path = Join-Path $scriptDir $info.Name
                 if (Test-Path $path) {
