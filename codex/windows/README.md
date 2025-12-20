@@ -42,18 +42,37 @@ Downloads Poppler to `$HOME\Tools\poppler\` - no admin required.
 ## Running the Service
 
 ### Start the Service
+
+**Important:** Start from a project directory, not from a drive root (C:\, D:\).
+
 ```powershell
+# Navigate to your project folder first
+cd C:\Projects\MyApp
+
 # Option A: Batch file (handles execution policy)
-.\Start-Service.bat
+.\path\to\Start-Service.bat
 
 # Option B: Direct PowerShell
-.\CodexService.ps1
+.\path\to\CodexService.ps1
 
 # Option C: With verbose logging
-.\CodexService.ps1 -Verbose
+.\path\to\CodexService.ps1 -Verbose
 ```
 
-The service listens on `\\.\pipe\codex-service` and waits for JSON requests.
+The service will display:
+```
+[CONFIG] Read Access: Entire drive (read-only)
+[CONFIG] Write Access: C:\Projects\MyApp (no prompts)
+```
+
+### Access Permissions
+
+| Access | Scope | Description |
+|--------|-------|-------------|
+| **Read** | Entire drive | Can read any file on the machine |
+| **Write** | Working directory only | Can only write to the folder where service started |
+
+This design allows Codex to analyze files anywhere while restricting writes to your project folder.
 
 ### Test with Demo
 ```powershell
@@ -82,9 +101,6 @@ Send requests to the service from scripts or command line.
 # Simple prompt
 .\CodexClient.ps1 -Prompt "Explain recursion in Python"
 
-# With sandbox mode
-.\CodexClient.ps1 -Prompt "Create hello.py" -Sandbox full-auto
-
 # With working directory
 .\CodexClient.ps1 -Prompt "Analyze this project" -WorkingDirectory "C:\Projects\MyApp"
 
@@ -98,7 +114,6 @@ $result = .\CodexClient.ps1 -Prompt "Hello" -Raw
 |-----------|---------|-------------|
 | `-Prompt` | - | Task/question to send |
 | `-Command` | - | Service command: ping, status, shutdown |
-| `-Sandbox` | read-only | read-only, workspace-write, full-auto, danger-full-access |
 | `-TimeoutSeconds` | 300 | Request timeout |
 | `-WorkingDirectory` | - | Working directory for Codex |
 | `-Raw` | false | Output raw JSON |
@@ -221,14 +236,17 @@ Each request spawns a **fresh codex process**:
 }
 ```
 
-### Sandbox Modes
+### Permissions Model
 
-| Mode | Description |
-|------|-------------|
-| `read-only` | Default. Codex can only read files |
-| `workspace-write` | Can write to working directory |
-| `full-auto` | Can write files without prompts |
-| `danger-full-access` | Full system access (caution) |
+The service runs with fixed permissions (not configurable per-request):
+
+| Permission | Value |
+|------------|-------|
+| Read | Entire drive |
+| Write | Working directory only (where service started) |
+| Approval | Never (autonomous operation) |
+
+This ensures consistent, secure behavior for all requests.
 
 ---
 
