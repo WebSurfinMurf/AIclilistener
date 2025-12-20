@@ -16,6 +16,258 @@ Add-Type -AssemblyName System.Drawing
 # Get script directory
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 
+# Function to show PDF text extraction dialog
+function Show-PdfExtractDialog {
+    param([System.Windows.Forms.Form]$ParentForm)
+
+    # Show file picker for PDF
+    $openDialog = New-Object System.Windows.Forms.OpenFileDialog
+    $openDialog.Title = "Select a PDF file to extract text from"
+    $openDialog.Filter = "PDF files (*.pdf)|*.pdf|All files (*.*)|*.*"
+    $openDialog.InitialDirectory = [Environment]::GetFolderPath('Desktop')
+
+    $result = $openDialog.ShowDialog($ParentForm)
+    if ($result -ne [System.Windows.Forms.DialogResult]::OK) {
+        return
+    }
+
+    $pdfPath = $openDialog.FileName
+
+    # Create viewer dialog
+    $viewer = New-Object System.Windows.Forms.Form
+    $viewer.Text = "PDF Text Extraction - $(Split-Path $pdfPath -Leaf)"
+    $viewer.Size = New-Object System.Drawing.Size(800, 600)
+    $viewer.StartPosition = "CenterParent"
+    $viewer.FormBorderStyle = "Sizable"
+    $viewer.MinimumSize = New-Object System.Drawing.Size(400, 300)
+    $viewer.BackColor = [System.Drawing.Color]::FromArgb(250, 250, 250)
+
+    # Status label
+    $statusLabel = New-Object System.Windows.Forms.Label
+    $statusLabel.Text = "Extracting text from: $pdfPath"
+    $statusLabel.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+    $statusLabel.ForeColor = [System.Drawing.Color]::FromArgb(100, 100, 100)
+    $statusLabel.Location = New-Object System.Drawing.Point(20, 15)
+    $statusLabel.Size = New-Object System.Drawing.Size(740, 20)
+    $statusLabel.Anchor = "Top,Left,Right"
+    $viewer.Controls.Add($statusLabel)
+
+    # Text box for extracted text
+    $textBox = New-Object System.Windows.Forms.TextBox
+    $textBox.Multiline = $true
+    $textBox.ScrollBars = "Both"
+    $textBox.Font = New-Object System.Drawing.Font("Consolas", 10)
+    $textBox.Location = New-Object System.Drawing.Point(20, 45)
+    $textBox.Size = New-Object System.Drawing.Size(745, 450)
+    $textBox.ReadOnly = $true
+    $textBox.BackColor = [System.Drawing.Color]::White
+    $textBox.WordWrap = $false
+    $textBox.Anchor = "Top,Bottom,Left,Right"
+    $viewer.Controls.Add($textBox)
+
+    # Close button
+    $closeButton = New-Object System.Windows.Forms.Button
+    $closeButton.Text = "Close"
+    $closeButton.Font = New-Object System.Drawing.Font("Segoe UI", 10)
+    $closeButton.Size = New-Object System.Drawing.Size(100, 35)
+    $closeButton.Location = New-Object System.Drawing.Point(665, 510)
+    $closeButton.BackColor = [System.Drawing.Color]::FromArgb(120, 120, 120)
+    $closeButton.ForeColor = [System.Drawing.Color]::White
+    $closeButton.FlatStyle = "Flat"
+    $closeButton.FlatAppearance.BorderSize = 0
+    $closeButton.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $closeButton.Anchor = "Bottom,Right"
+    $closeButton.Add_Click({ $viewer.Close() })
+    $viewer.Controls.Add($closeButton)
+
+    # Extract text using Test-PdfExtract.ps1 logic
+    $testScript = Join-Path $scriptDir "Test-PdfExtract.ps1"
+    $libPath = Join-Path $scriptDir "lib\Get-FileText.ps1"
+
+    $viewer.Add_Shown({
+        $viewer.Refresh()
+
+        try {
+            # Try to use Get-FileText if available
+            if (Test-Path $libPath) {
+                . $libPath
+                $text = Get-FileText -FilePath $pdfPath -MaxChars 100000
+                if ($text) {
+                    $textBox.Text = $text
+                    $statusLabel.Text = "Extracted $($text.Length) characters from: $(Split-Path $pdfPath -Leaf)"
+                    $statusLabel.ForeColor = [System.Drawing.Color]::FromArgb(46, 125, 50)
+                } else {
+                    $textBox.Text = "[No text extracted - PDF may be scanned images or empty]"
+                    $statusLabel.Text = "No text found in PDF"
+                    $statusLabel.ForeColor = [System.Drawing.Color]::FromArgb(200, 100, 0)
+                }
+            } else {
+                # Fallback - try pdftotext directly
+                $configPath = Join-Path $scriptDir ".pdftotext-path"
+                $pdftotextPath = $null
+
+                if (Test-Path $configPath) {
+                    $pdftotextPath = Get-Content $configPath -Raw
+                    $pdftotextPath = $pdftotextPath.Trim()
+                }
+
+                if (-not $pdftotextPath -or -not (Test-Path $pdftotextPath)) {
+                    $pdftotextPath = Get-Command pdftotext -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source
+                }
+
+                if ($pdftotextPath -and (Test-Path $pdftotextPath)) {
+                    $tempOut = [System.IO.Path]::GetTempFileName()
+                    & $pdftotextPath -layout $pdfPath $tempOut 2>$null
+                    if (Test-Path $tempOut) {
+                        $text = Get-Content $tempOut -Raw -Encoding UTF8
+                        Remove-Item $tempOut -Force
+                        if ($text -and $text.Trim()) {
+                            $textBox.Text = $text
+                            $statusLabel.Text = "Extracted $($text.Length) characters"
+                            $statusLabel.ForeColor = [System.Drawing.Color]::FromArgb(46, 125, 50)
+                        } else {
+                            $textBox.Text = "[No text extracted - PDF may be scanned images]"
+                            $statusLabel.ForeColor = [System.Drawing.Color]::FromArgb(200, 100, 0)
+                        }
+                    }
+                } else {
+                    $textBox.Text = "[pdftotext not installed - run Install-PdfToText.ps1 first]"
+                    $statusLabel.Text = "pdftotext not found"
+                    $statusLabel.ForeColor = [System.Drawing.Color]::FromArgb(200, 0, 0)
+                }
+            }
+        } catch {
+            $textBox.Text = "[Error extracting text: $($_.Exception.Message)]"
+            $statusLabel.Text = "Error during extraction"
+            $statusLabel.ForeColor = [System.Drawing.Color]::FromArgb(200, 0, 0)
+        }
+    })
+
+    [void]$viewer.ShowDialog($ParentForm)
+}
+
+# Function to show Setup sub-menu
+function Show-SetupMenu {
+    param([System.Windows.Forms.Form]$ParentForm)
+
+    $setupDialog = New-Object System.Windows.Forms.Form
+    $setupDialog.Text = "Setup & Testing"
+    $setupDialog.Size = New-Object System.Drawing.Size(500, 350)
+    $setupDialog.StartPosition = "CenterParent"
+    $setupDialog.FormBorderStyle = "FixedDialog"
+    $setupDialog.MaximizeBox = $false
+    $setupDialog.MinimizeBox = $false
+    $setupDialog.BackColor = [System.Drawing.Color]::FromArgb(250, 250, 250)
+
+    # Title
+    $titleLabel = New-Object System.Windows.Forms.Label
+    $titleLabel.Text = "Setup & Testing Tools"
+    $titleLabel.Font = New-Object System.Drawing.Font("Segoe UI", 14, [System.Drawing.FontStyle]::Bold)
+    $titleLabel.ForeColor = [System.Drawing.Color]::FromArgb(33, 33, 33)
+    $titleLabel.Location = New-Object System.Drawing.Point(20, 15)
+    $titleLabel.Size = New-Object System.Drawing.Size(440, 30)
+    $setupDialog.Controls.Add($titleLabel)
+
+    $yPos = 55
+    $btnHeight = 40
+    $btnSpacing = 8
+    $btnWidth = 440
+
+    # Setup items
+    $setupItems = @(
+        @{
+            Name = "Install-Skill.ps1"
+            Label = "Install Skill"
+            Description = "Install the AIclilistener skill for Codex"
+            Color = [System.Drawing.Color]::FromArgb(255, 152, 0)
+        },
+        @{
+            Name = "Install-PdfToText.ps1"
+            Label = "Install PdfToText"
+            Description = "Install pdftotext (Poppler) for PDF support"
+            Color = [System.Drawing.Color]::FromArgb(255, 152, 0)
+        },
+        @{
+            Name = "Test-PdfExtract"
+            Label = "Test PDF Extraction"
+            Description = "Select a PDF and view extracted text"
+            Color = [System.Drawing.Color]::FromArgb(121, 85, 72)
+            PdfViewer = $true
+        },
+        @{
+            Name = "Test-Pipe.ps1"
+            Label = "Test Pipe Connection"
+            Description = "Low-level Named Pipe connectivity test"
+            Color = [System.Drawing.Color]::FromArgb(121, 85, 72)
+        }
+    )
+
+    foreach ($item in $setupItems) {
+        $btn = New-Object System.Windows.Forms.Button
+        $btn.Size = New-Object System.Drawing.Size($btnWidth, $btnHeight)
+        $btn.Location = New-Object System.Drawing.Point(20, $yPos)
+        $btn.FlatStyle = "Flat"
+        $btn.FlatAppearance.BorderSize = 0
+        $btn.BackColor = $item.Color
+        $btn.ForeColor = [System.Drawing.Color]::White
+        $btn.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
+        $btn.TextAlign = "MiddleLeft"
+        $btn.Padding = New-Object System.Windows.Forms.Padding(10, 0, 0, 0)
+        $btn.Cursor = [System.Windows.Forms.Cursors]::Hand
+        $btn.Text = "  $($item.Label)`n  $($item.Description)"
+        $btn.Tag = $item
+
+        $btn.Add_Click({
+            param($sender, $e)
+            $info = $sender.Tag
+
+            if ($info.PdfViewer) {
+                Show-PdfExtractDialog -ParentForm $setupDialog
+            } else {
+                $path = Join-Path $scriptDir $info.Name
+                if (Test-Path $path) {
+                    Start-Process cmd.exe -ArgumentList "/k", "powershell -ExecutionPolicy Bypass -File `"$path`" && echo. && echo Press Enter to close... && pause >nul"
+                }
+            }
+        })
+
+        # Hover effects
+        $btn.Add_MouseEnter({
+            param($sender, $e)
+            $c = $sender.BackColor
+            $sender.BackColor = [System.Drawing.Color]::FromArgb(
+                [Math]::Min(255, $c.R + 30),
+                [Math]::Min(255, $c.G + 30),
+                [Math]::Min(255, $c.B + 30)
+            )
+        })
+        $btn.Add_MouseLeave({
+            param($sender, $e)
+            $sender.BackColor = $sender.Tag.Color
+        })
+
+        $setupDialog.Controls.Add($btn)
+        $yPos += $btnHeight + $btnSpacing
+    }
+
+    # Close button
+    $closeBtn = New-Object System.Windows.Forms.Button
+    $closeBtn.Text = "Close"
+    $closeBtn.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+    $closeBtn.Size = New-Object System.Drawing.Size($btnWidth, 30)
+    $closeBtn.Location = New-Object System.Drawing.Point(20, ($yPos + 10))
+    $closeBtn.FlatStyle = "Flat"
+    $closeBtn.FlatAppearance.BorderSize = 1
+    $closeBtn.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(200, 200, 200)
+    $closeBtn.BackColor = [System.Drawing.Color]::White
+    $closeBtn.ForeColor = [System.Drawing.Color]::FromArgb(100, 100, 100)
+    $closeBtn.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $closeBtn.Add_Click({ $setupDialog.Close() })
+    $setupDialog.Controls.Add($closeBtn)
+
+    [void]$setupDialog.ShowDialog($ParentForm)
+}
+
 # Function to show the Codex Client prompt dialog
 function Show-CodexClientDialog {
     param([System.Windows.Forms.Form]$ParentForm)
@@ -229,8 +481,14 @@ Remove-Item '$tempFile' -Force -ErrorAction SilentlyContinue
     [void]$dialog.ShowDialog($ParentForm)
 }
 
-# Define scripts with descriptions
+# Main scripts (excluding setup items)
 $scripts = @(
+    @{
+        Name = "Setup"
+        Description = "Install skills, PDF tools, and run diagnostic tests"
+        SetupMenu = $true
+        Color = [System.Drawing.Color]::FromArgb(96, 125, 139)  # Blue-gray
+    },
     @{
         Name = "CodexService.ps1"
         Description = "Start a Codex AI agent that accepts JSON requests via Named Pipe"
@@ -252,33 +510,13 @@ $scripts = @(
         Name = "Summarize-Files.ps1"
         Description = "Batch summarize files listed in a CSV using AI"
         Color = [System.Drawing.Color]::FromArgb(156, 39, 176)  # Purple
-    },
-    @{
-        Name = "Install-Skill.ps1"
-        Description = "Install the AIclilistener skill so Codex can use this service automatically"
-        Color = [System.Drawing.Color]::FromArgb(255, 152, 0)  # Orange
-    },
-    @{
-        Name = "Install-PdfToText.ps1"
-        Description = "Install pdftotext (Poppler) to enable PDF text extraction"
-        Color = [System.Drawing.Color]::FromArgb(255, 152, 0)  # Orange
-    },
-    @{
-        Name = "Test-PdfExtract.ps1"
-        Description = "Test PDF text extraction on a specific file"
-        Color = [System.Drawing.Color]::FromArgb(121, 85, 72)  # Brown
-    },
-    @{
-        Name = "Test-Pipe.ps1"
-        Description = "Low-level Named Pipe connectivity test"
-        Color = [System.Drawing.Color]::FromArgb(121, 85, 72)  # Brown
     }
 )
 
-# Create form (25% wider and 25% taller)
+# Create form
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "AIclilistener Menu"
-$form.Size = New-Object System.Drawing.Size(625, 675)
+$form.Size = New-Object System.Drawing.Size(625, 450)
 $form.StartPosition = "CenterScreen"
 $form.FormBorderStyle = "FixedDialog"
 $form.MaximizeBox = $false
@@ -295,25 +533,26 @@ $form.Controls.Add($titleLabel)
 
 # Subtitle
 $subtitleLabel = New-Object System.Windows.Forms.Label
-$subtitleLabel.Text = "Select a script to run:"
+$subtitleLabel.Text = "Select an option:"
 $subtitleLabel.Font = New-Object System.Drawing.Font("Segoe UI", 10)
 $subtitleLabel.ForeColor = [System.Drawing.Color]::FromArgb(100, 100, 100)
 $subtitleLabel.Size = New-Object System.Drawing.Size(580, 20)
 $subtitleLabel.Location = New-Object System.Drawing.Point(20, 50)
 $form.Controls.Add($subtitleLabel)
 
-# Create buttons for each script (25% wider: 450 -> 565)
+# Create buttons
 $yPos = 85
 $buttonHeight = 45
 $buttonSpacing = 8
 $buttonWidth = 565
 
 foreach ($script in $scripts) {
-    $scriptPath = Join-Path $scriptDir $script.Name
-
-    # Skip if script doesn't exist
-    if (-not (Test-Path $scriptPath)) {
-        continue
+    # For non-Setup items, check if script exists
+    if (-not $script.SetupMenu) {
+        $scriptPath = Join-Path $scriptDir $script.Name
+        if (-not (Test-Path $scriptPath)) {
+            continue
+        }
     }
 
     # Create button
@@ -329,7 +568,7 @@ foreach ($script in $scripts) {
     $button.Padding = New-Object System.Windows.Forms.Padding(10, 0, 0, 0)
     $button.Cursor = [System.Windows.Forms.Cursors]::Hand
 
-    # Button text with name and description
+    # Button text
     $button.Text = "  $($script.Name)`n  $($script.Description)"
 
     # Store script info in Tag
@@ -341,12 +580,14 @@ foreach ($script in $scripts) {
         $info = $sender.Tag
         $path = Join-Path $scriptDir $info.Name
 
-        if ($info.PromptDialog) {
-            # Show the Codex Client prompt dialog
+        if ($info.SetupMenu) {
+            Show-SetupMenu -ParentForm $form
+
+        } elseif ($info.PromptDialog) {
             Show-CodexClientDialog -ParentForm $form
 
         } elseif ($info.SelectDirectory) {
-            # Special handling for CodexService - show explanation and folder picker
+            # Special handling for CodexService
             $explanation = @"
 Select a working directory for the Codex agent.
 
@@ -371,12 +612,10 @@ Click OK to select your working directory.
                 return
             }
 
-            # Show folder browser
             $folderBrowser = New-Object System.Windows.Forms.FolderBrowserDialog
             $folderBrowser.Description = "Select the directory where the Codex agent can write files"
             $folderBrowser.ShowNewFolderButton = $true
 
-            # Try to set initial directory to common locations
             if (Test-Path "$env:USERPROFILE\Projects") {
                 $folderBrowser.SelectedPath = "$env:USERPROFILE\Projects"
             } elseif (Test-Path "$env:USERPROFILE\Documents") {
@@ -390,17 +629,14 @@ Click OK to select your working directory.
             }
 
             $selectedDir = $folderBrowser.SelectedPath
-
-            # Spawn CodexService in new window at selected directory
             Start-Process cmd.exe -ArgumentList "/k", "cd /d `"$selectedDir`" && powershell -ExecutionPolicy Bypass -File `"$path`""
 
         } else {
-            # Spawn script in new command prompt window (menu stays open)
             Start-Process cmd.exe -ArgumentList "/k", "powershell -ExecutionPolicy Bypass -File `"$path`" && echo. && echo Press Enter to close... && pause >nul"
         }
     })
 
-    # Hover effects - lighten color manually
+    # Hover effects
     $button.Add_MouseEnter({
         param($sender, $e)
         $c = $sender.BackColor
