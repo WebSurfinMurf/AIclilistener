@@ -70,10 +70,10 @@ $scripts = @(
     }
 )
 
-# Create form (25% wider: 500 -> 625)
+# Create form (25% wider and 25% taller)
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "AIclilistener Menu"
-$form.Size = New-Object System.Drawing.Size(625, 540)
+$form.Size = New-Object System.Drawing.Size(625, 675)
 $form.StartPosition = "CenterScreen"
 $form.FormBorderStyle = "FixedDialog"
 $form.MaximizeBox = $false
@@ -185,28 +185,15 @@ Click OK to select your working directory.
             # Spawn CodexService in new window at selected directory
             Start-Process cmd.exe -ArgumentList "/k", "cd /d `"$selectedDir`" && powershell -ExecutionPolicy Bypass -File `"$path`""
 
-        } elseif ($info.NewWindow) {
-            # Spawn in new command prompt window
-            Start-Process cmd.exe -ArgumentList "/k", "powershell", "-ExecutionPolicy", "Bypass", "-File", "`"$path`""
         } else {
-            # Run in current context but hide menu temporarily
-            $form.WindowState = "Minimized"
-
-            try {
-                if ($info.Args) {
-                    & powershell -ExecutionPolicy Bypass -File $path $info.Args
-                } else {
-                    & powershell -ExecutionPolicy Bypass -File $path
-                }
-            } finally {
-                $form.WindowState = "Normal"
-                $form.Activate()
+            # Spawn all scripts in new command prompt window (menu stays open)
+            if ($info.Args) {
+                # Script with arguments - add pause at end
+                Start-Process cmd.exe -ArgumentList "/k", "powershell -ExecutionPolicy Bypass -File `"$path`" $($info.Args) && echo. && echo Press Enter to close... && pause >nul"
+            } else {
+                # Script without arguments - add pause at end
+                Start-Process cmd.exe -ArgumentList "/k", "powershell -ExecutionPolicy Bypass -File `"$path`" && echo. && echo Press Enter to close... && pause >nul"
             }
-
-            # Pause so user can see output
-            Write-Host ""
-            Write-Host "Press Enter to return to menu..." -ForegroundColor Cyan
-            Read-Host
         }
     })
 

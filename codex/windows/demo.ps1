@@ -116,3 +116,5 @@ Write-Host "  .\CodexClient.ps1 -Prompt `"Your question here`"" -ForegroundColor
 Write-Host "  .\CodexClient.ps1 -Command status" -ForegroundColor Cyan
 Write-Host "  .\CodexClient.ps1 -Command shutdown" -ForegroundColor Cyan
 Write-Host ""
+Write-Host "Press Enter to exit..." -ForegroundColor Yellow
+Read-Host
