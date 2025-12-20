@@ -612,16 +612,31 @@ function Start-CodexService {
             try {
                 # Create named pipe server with security ACL (current user only)
                 # Must use Asynchronous option for BeginWaitForConnection
-                $pipeServer = New-Object System.IO.Pipes.NamedPipeServerStream(
-                    $script:Config.PipeName,
-                    [System.IO.Pipes.PipeDirection]::InOut,
-                    1,  # maxNumberOfServerInstances
-                    [System.IO.Pipes.PipeTransmissionMode]::Byte,
-                    [System.IO.Pipes.PipeOptions]::Asynchronous,
-                    0,  # inBufferSize (default)
-                    0,  # outBufferSize (default)
-                    $pipeSecurity
-                )
+                try {
+                    $pipeServer = New-Object System.IO.Pipes.NamedPipeServerStream(
+                        $script:Config.PipeName,
+                        [System.IO.Pipes.PipeDirection]::InOut,
+                        1,  # maxNumberOfServerInstances
+                        [System.IO.Pipes.PipeTransmissionMode]::Byte,
+                        [System.IO.Pipes.PipeOptions]::Asynchronous,
+                        0,  # inBufferSize (default)
+                        0,  # outBufferSize (default)
+                        $pipeSecurity
+                    )
+                } catch {
+                    if ($_.Exception.Message -match "Access.*denied" -or $_.Exception.InnerException.Message -match "Access.*denied") {
+                        Write-Host ""
+                        Write-Host "[ERROR] Cannot create pipe - another instance may be running!" -ForegroundColor Red
+                        Write-Host ""
+                        Write-Host "Solutions:" -ForegroundColor Yellow
+                        Write-Host "  1. Close the other CodexService window" -ForegroundColor White
+                        Write-Host "  2. Or use a different pipe name:" -ForegroundColor White
+                        Write-Host "     .\CodexService.ps1 -PipeName 'codex-service-2'" -ForegroundColor Cyan
+                        Write-Host ""
+                        throw
+                    }
+                    throw
+                }
 
                 Write-Host "[LISTEN] Waiting for client on \\.\pipe\$($script:Config.PipeName)..." -ForegroundColor Gray
 
