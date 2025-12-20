@@ -39,6 +39,17 @@ Downloads Poppler to `$HOME\Tools\poppler\` - no admin required.
 
 ---
 
+## Quick Start (GUI Menu)
+
+Double-click `Menu.bat` or run:
+```powershell
+.\Menu.ps1
+```
+
+This opens a graphical menu with buttons to launch any script. CodexService opens in a new window so the menu stays available.
+
+---
+
 ## Running the Service
 
 ### Start the Service
@@ -254,14 +265,17 @@ This ensures consistent, secure behavior for all requests.
 
 ```
 codex/windows/
+├── Menu.ps1              # GUI menu to launch scripts
+├── Menu.bat              # Menu launcher (double-click)
 ├── CodexService.ps1      # Main service - run this first
 ├── CodexClient.ps1       # Client for sending requests
 ├── Summarize-Files.ps1   # Batch file summarizer
-├── Start-Service.bat     # Launcher with execution policy bypass
+├── Start-Service.bat     # Service launcher with execution policy bypass
 ├── demo.ps1              # Interactive demo
 ├── Install-Skill.ps1     # Deploy skill to Codex
 ├── Install-PdfToText.ps1 # Install PDF text extraction
 ├── Test-PdfExtract.ps1   # Test PDF extraction
+├── Test-Pipe.ps1         # Low-level pipe connectivity test
 ├── lib/
 │   └── Get-FileText.ps1  # Multi-format text extraction
 └── skill/
