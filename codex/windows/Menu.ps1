@@ -552,6 +552,7 @@ Remove-Item '$tempFile' -Force -ErrorAction SilentlyContinue
 }
 
 # Function to check if Codex service is running (for Menu dialogs)
+# Uses same detection method as demo.ps1
 function Test-CodexServiceRunning {
     param([string]$PipeName = "codex-service")
 
@@ -561,9 +562,8 @@ function Test-CodexServiceRunning {
             return $false
         }
 
-        $output = & $clientPath -PipeName $PipeName -Command "ping" -Raw 2>&1
-        $outputStr = $output | Out-String
-        return ($outputStr -match '"status"\s*:\s*"success"')
+        $pingResult = & $clientPath -PipeName $PipeName -Command "ping" -Raw 2>&1
+        return ($pingResult -like "*pong*")
     } catch {
         return $false
     }
