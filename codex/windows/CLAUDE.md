@@ -26,11 +26,17 @@ The demo will:
 
 ```
 codex/windows/
-├── CodexService.ps1      # Named Pipe listener - START THIS FIRST
-├── CodexClient.ps1       # Client for sending requests
+├── Menu.ps1              # GUI menu to launch scripts
+├── Menu.bat              # Menu launcher (double-click)
+├── StartCodex.ps1        # Launch Codex CLI with directory picker
+├── CodexService.ps1      # Named Pipe service for JSON requests
+├── CodexClient.ps1       # Client for sending requests to service
 ├── Summarize-Files.ps1   # CSV batch processor
-├── demo.ps1              # Interactive demo script
+├── demo.ps1              # Interactive demo (in Setup menu)
 ├── Start-Service.bat     # Launcher with execution policy bypass
+├── Install-Skill.ps1     # Deploy skill to Codex
+├── Install-PdfToText.ps1 # Install PDF text extraction
+├── Test-PdfExtract.ps1   # Test PDF extraction
 ├── CLAUDE.md             # This file
 ├── README.md             # Full documentation
 └── lib/

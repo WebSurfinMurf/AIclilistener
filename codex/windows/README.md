@@ -50,6 +50,22 @@ This opens a graphical menu with buttons to launch any script. CodexService open
 
 ---
 
+## Start Codex (Direct Mode)
+
+Launch Codex CLI directly with a directory picker:
+```powershell
+.\StartCodex.ps1
+```
+
+This will:
+1. Show a permissions explanation dialog
+2. Let you select a working directory
+3. Launch Codex with full disk read access and write access to the selected folder
+
+Use this for interactive Codex sessions. For programmatic/batch access, use CodexService instead.
+
+---
+
 ## Running the Service
 
 ### Start the Service
@@ -267,11 +283,12 @@ This ensures consistent, secure behavior for all requests.
 codex/windows/
 ├── Menu.ps1              # GUI menu to launch scripts
 ├── Menu.bat              # Menu launcher (double-click)
-├── CodexService.ps1      # Main service - run this first
-├── CodexClient.ps1       # Client for sending requests
-├── Summarize-Files.ps1   # Batch file summarizer
+├── StartCodex.ps1        # Launch Codex CLI with directory picker
+├── CodexService.ps1      # Named Pipe service for JSON requests
+├── CodexClient.ps1       # Client for sending requests to service
+├── Summarize-Files.ps1   # Batch file summarizer via CSV
 ├── Start-Service.bat     # Service launcher with execution policy bypass
-├── demo.ps1              # Interactive demo
+├── demo.ps1              # Interactive demo (in Setup menu)
 ├── Install-Skill.ps1     # Deploy skill to Codex
 ├── Install-PdfToText.ps1 # Install PDF text extraction
 ├── Test-PdfExtract.ps1   # Test PDF extraction
