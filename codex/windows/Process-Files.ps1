@@ -1,21 +1,19 @@
 <#
 .SYNOPSIS
-    Process files listed in a CSV using Codex CLI with custom prompts
+    Process files listed in a CSV using Codex CLI with custom instructions
 
 .DESCRIPTION
     Reads a CSV file where column 1 contains file paths, sends each file to Codex
-    with a customizable prompt, and adds the result to a new column in the CSV.
+    with customizable instructions, and writes the result to a specified column.
+    If the column exists, it will be replaced. If not, it will be added.
 
 .PARAMETER CsvPath
     Path to the input CSV file
 
-.PARAMETER Prompt
-    The prompt template to send to the AI. Use placeholders:
-    {fileName} - File name (e.g., "report.xlsx")
-    {extension} - File extension (e.g., ".xlsx")
-    {filePath} - Full file path
-    {fileContent} - Extracted file content
-    Default is a summarization prompt.
+.PARAMETER Instruction
+    The instruction to give the AI after presenting file contents.
+    File metadata and contents are automatically prepended.
+    Default is a summarization instruction.
 
 .PARAMETER OutputPath
     Path for the output CSV (default: adds _processed to input filename)
@@ -27,7 +25,8 @@
     Name of the column containing file paths (default: first column)
 
 .PARAMETER ResultColumn
-    Name for the new result column (default: Result)
+    Name for the result column (default: Summary).
+    If this column exists, it will be REPLACED. Otherwise, it will be added.
 
 .PARAMETER MaxChars
     Maximum characters to read from each file (default: 50000)
@@ -36,10 +35,10 @@
     .\Process-Files.ps1 -CsvPath "C:\files.csv"
 
 .EXAMPLE
-    .\Process-Files.ps1 -CsvPath "files.csv" -Prompt "Extract all dates from: {fileContent}"
+    .\Process-Files.ps1 -CsvPath "files.csv" -Instruction "Extract all function names"
 
 .EXAMPLE
-    .\Process-Files.ps1 -CsvPath "files.csv" -FileColumn "FilePath" -ResultColumn "Description"
+    .\Process-Files.ps1 -CsvPath "files.csv" -ResultColumn "Description"
 
 .EXAMPLE
     .\Process-Files.ps1 -CsvPath "files.csv" -Resume
@@ -50,13 +49,13 @@
 
 .NOTES
     Requires CodexService.ps1 to be running
-    Version: 2.0.0 - Parameterized prompt support
+    Version: 2.1.0 - Split prompt into fixed prefix and user instruction
 #>
 
 param(
     [string]$CsvPath,
 
-    [string]$Prompt,
+    [string]$Instruction,
 
     [string]$OutputPath,
 
@@ -64,26 +63,16 @@ param(
 
     [string]$FileColumn,
 
-    [string]$ResultColumn = "Result",
+    [string]$ResultColumn = "Summary",
 
     [int]$MaxChars = 50000,
 
     [switch]$Resume
 )
 
-# Default prompt template if not provided
-if (-not $Prompt) {
-    $Prompt = @"
-Please read and summarize the following file.
-
-FILE: {fileName}
-TYPE: {extension}
-PATH: {filePath}
-
---- FILE CONTENTS BEGIN ---
-{fileContent}
---- FILE CONTENTS END ---
-
+# Default instruction if not provided
+if (-not $Instruction) {
+    $Instruction = @"
 Provide a concise summary (2-4 sentences) describing:
 1. What this file is/does
 2. Key functionality or content
@@ -344,9 +333,22 @@ if (-not $OutputPath) {
 
 Write-Log "Output will be saved to: $OutputPath" "Info"
 
+# Check if ResultColumn already exists in CSV
+$columnExists = $cleanColumns -contains $ResultColumn
+if ($columnExists) {
+    Write-Host ""
+    Write-Host "WARNING: Column '$ResultColumn' already exists and will be REPLACED with LLM responses." -ForegroundColor Yellow
+    Write-Host ""
+    $outputColumns = $columns  # Don't add, it already exists
+} else {
+    Write-Host ""
+    Write-Host "NOTE: Column '$ResultColumn' will be ADDED to the CSV with LLM responses." -ForegroundColor Cyan
+    Write-Host ""
+    $outputColumns = $columns + @($ResultColumn)
+}
+
 # Check for resume capability
 $alreadyProcessed = @{}
-$outputColumns = $columns + @($ResultColumn)
 $isFirstWrite = $true
 
 if ($Resume -and (Test-Path $OutputPath)) {
@@ -440,11 +442,18 @@ foreach ($row in $csv) {
     $extension = $fileInfo.Extension
     $fileName = $fileInfo.Name
 
-    # Build Codex prompt using template with placeholder substitution
-    $actualPrompt = $Prompt -replace '\{fileName\}', $fileName `
-                           -replace '\{extension\}', $extension `
-                           -replace '\{filePath\}', $filePath `
-                           -replace '\{fileContent\}', $fileContent
+    # Build Codex prompt with fixed file content prefix + user instruction
+    $actualPrompt = @"
+FILE: $fileName
+TYPE: $extension
+PATH: $filePath
+
+--- FILE CONTENTS BEGIN ---
+$fileContent
+--- FILE CONTENTS END ---
+
+$Instruction
+"@
 
     # Send to Codex via CodexClient.ps1
     $result = Send-CodexRequest -PipeName $PipeName -Prompt $actualPrompt -TimeoutSeconds 120

@@ -555,17 +555,7 @@ Remove-Item '$tempFile' -Force -ErrorAction SilentlyContinue
 function Show-ProcessFilesDialog {
     param([System.Windows.Forms.Form]$ParentForm)
 
-    $defaultPrompt = @"
-Please read and summarize the following file.
-
-FILE: {fileName}
-TYPE: {extension}
-PATH: {filePath}
-
---- FILE CONTENTS BEGIN ---
-{fileContent}
---- FILE CONTENTS END ---
-
+    $defaultInstruction = @"
 Provide a concise summary (2-4 sentences) describing:
 1. What this file is/does
 2. Key functionality or content
@@ -576,8 +566,8 @@ Keep the summary brief and technical.
 
     # Create dialog
     $dialog = New-Object System.Windows.Forms.Form
-    $dialog.Text = "Process Files - Configure AI Prompt"
-    $dialog.Size = New-Object System.Drawing.Size(700, 550)
+    $dialog.Text = "Process Files - Configure AI Instruction"
+    $dialog.Size = New-Object System.Drawing.Size(700, 620)
     $dialog.StartPosition = "CenterParent"
     $dialog.FormBorderStyle = "FixedDialog"
     $dialog.MaximizeBox = $false
@@ -586,44 +576,78 @@ Keep the summary brief and technical.
 
     # Info note at top
     $noteLabel = New-Object System.Windows.Forms.Label
-    $noteLabel.Text = "Customize the prompt sent to the AI for each file. Use placeholders: {fileName}, {extension}, {filePath}, {fileContent}"
+    $noteLabel.Text = "File metadata and contents are automatically sent to the AI. Enter your instruction below."
     $noteLabel.Font = New-Object System.Drawing.Font("Segoe UI", 9)
     $noteLabel.ForeColor = [System.Drawing.Color]::FromArgb(100, 100, 100)
     $noteLabel.Location = New-Object System.Drawing.Point(20, 12)
-    $noteLabel.Size = New-Object System.Drawing.Size(645, 35)
+    $noteLabel.Size = New-Object System.Drawing.Size(645, 20)
     $dialog.Controls.Add($noteLabel)
 
-    # Prompt label
-    $promptLabel = New-Object System.Windows.Forms.Label
-    $promptLabel.Text = "AI Prompt Template:"
-    $promptLabel.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
-    $promptLabel.Location = New-Object System.Drawing.Point(20, 55)
-    $promptLabel.Size = New-Object System.Drawing.Size(200, 25)
-    $dialog.Controls.Add($promptLabel)
+    # Fixed prefix preview
+    $prefixLabel = New-Object System.Windows.Forms.Label
+    $prefixLabel.Text = "The AI will receive:  FILE: [name]  TYPE: [ext]  PATH: [path]  --- FILE CONTENTS ---  [content]  --- END ---"
+    $prefixLabel.Font = New-Object System.Drawing.Font("Consolas", 8)
+    $prefixLabel.ForeColor = [System.Drawing.Color]::FromArgb(120, 120, 120)
+    $prefixLabel.Location = New-Object System.Drawing.Point(20, 32)
+    $prefixLabel.Size = New-Object System.Drawing.Size(645, 18)
+    $dialog.Controls.Add($prefixLabel)
 
-    # Prompt text box (multiline)
-    $promptBox = New-Object System.Windows.Forms.TextBox
-    $promptBox.Multiline = $true
-    $promptBox.ScrollBars = "Vertical"
-    $promptBox.Font = New-Object System.Drawing.Font("Consolas", 9)
-    $promptBox.Location = New-Object System.Drawing.Point(20, 85)
-    $promptBox.Size = New-Object System.Drawing.Size(645, 280)
-    $promptBox.AcceptsReturn = $true
-    $promptBox.Text = $defaultPrompt
-    $dialog.Controls.Add($promptBox)
+    # Instruction label
+    $instructionLabel = New-Object System.Windows.Forms.Label
+    $instructionLabel.Text = "Your Instruction to the AI:"
+    $instructionLabel.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+    $instructionLabel.Location = New-Object System.Drawing.Point(20, 58)
+    $instructionLabel.Size = New-Object System.Drawing.Size(250, 25)
+    $dialog.Controls.Add($instructionLabel)
+
+    # Instruction text box (multiline)
+    $instructionBox = New-Object System.Windows.Forms.TextBox
+    $instructionBox.Multiline = $true
+    $instructionBox.ScrollBars = "Vertical"
+    $instructionBox.Font = New-Object System.Drawing.Font("Consolas", 9)
+    $instructionBox.Location = New-Object System.Drawing.Point(20, 85)
+    $instructionBox.Size = New-Object System.Drawing.Size(645, 200)
+    $instructionBox.AcceptsReturn = $true
+    $instructionBox.Text = $defaultInstruction
+    $dialog.Controls.Add($instructionBox)
+
+    # Column name section
+    $columnLabel = New-Object System.Windows.Forms.Label
+    $columnLabel.Text = "Result Column Name:"
+    $columnLabel.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+    $columnLabel.Location = New-Object System.Drawing.Point(20, 300)
+    $columnLabel.Size = New-Object System.Drawing.Size(200, 25)
+    $dialog.Controls.Add($columnLabel)
+
+    # Column name textbox
+    $columnBox = New-Object System.Windows.Forms.TextBox
+    $columnBox.Font = New-Object System.Drawing.Font("Consolas", 10)
+    $columnBox.Location = New-Object System.Drawing.Point(220, 298)
+    $columnBox.Size = New-Object System.Drawing.Size(200, 25)
+    $columnBox.Text = "Summary"
+    $dialog.Controls.Add($columnBox)
+
+    # Column warning label
+    $columnWarning = New-Object System.Windows.Forms.Label
+    $columnWarning.Text = "WARNING: If this column exists in CSV, it will be REPLACED. Otherwise, it will be ADDED."
+    $columnWarning.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+    $columnWarning.ForeColor = [System.Drawing.Color]::FromArgb(200, 120, 0)
+    $columnWarning.Location = New-Object System.Drawing.Point(20, 328)
+    $columnWarning.Size = New-Object System.Drawing.Size(645, 20)
+    $dialog.Controls.Add($columnWarning)
 
     # CSV file section
     $csvLabel = New-Object System.Windows.Forms.Label
     $csvLabel.Text = "CSV File (first column must contain file paths):"
     $csvLabel.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
-    $csvLabel.Location = New-Object System.Drawing.Point(20, 380)
+    $csvLabel.Location = New-Object System.Drawing.Point(20, 360)
     $csvLabel.Size = New-Object System.Drawing.Size(400, 25)
     $dialog.Controls.Add($csvLabel)
 
     # CSV path textbox
     $csvPathBox = New-Object System.Windows.Forms.TextBox
     $csvPathBox.Font = New-Object System.Drawing.Font("Consolas", 10)
-    $csvPathBox.Location = New-Object System.Drawing.Point(20, 410)
+    $csvPathBox.Location = New-Object System.Drawing.Point(20, 388)
     $csvPathBox.Size = New-Object System.Drawing.Size(540, 25)
     $csvPathBox.ReadOnly = $true
     $csvPathBox.BackColor = [System.Drawing.Color]::White
@@ -633,7 +657,7 @@ Keep the summary brief and technical.
     $browseButton = New-Object System.Windows.Forms.Button
     $browseButton.Text = "Browse..."
     $browseButton.Font = New-Object System.Drawing.Font("Segoe UI", 9)
-    $browseButton.Location = New-Object System.Drawing.Point(570, 408)
+    $browseButton.Location = New-Object System.Drawing.Point(570, 386)
     $browseButton.Size = New-Object System.Drawing.Size(95, 28)
     $browseButton.BackColor = [System.Drawing.Color]::FromArgb(96, 125, 139)
     $browseButton.ForeColor = [System.Drawing.Color]::White
@@ -653,11 +677,19 @@ Keep the summary brief and technical.
         }
     })
 
+    # Resume checkbox
+    $resumeCheck = New-Object System.Windows.Forms.CheckBox
+    $resumeCheck.Text = "Resume (skip already processed files)"
+    $resumeCheck.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+    $resumeCheck.Location = New-Object System.Drawing.Point(20, 420)
+    $resumeCheck.Size = New-Object System.Drawing.Size(300, 25)
+    $dialog.Controls.Add($resumeCheck)
+
     # Start button
     $startButton = New-Object System.Windows.Forms.Button
     $startButton.Text = "Start Processing"
     $startButton.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
-    $startButton.Location = New-Object System.Drawing.Point(20, 460)
+    $startButton.Location = New-Object System.Drawing.Point(20, 530)
     $startButton.Size = New-Object System.Drawing.Size(150, 35)
     $startButton.BackColor = [System.Drawing.Color]::FromArgb(156, 39, 176)
     $startButton.ForeColor = [System.Drawing.Color]::White
@@ -670,7 +702,7 @@ Keep the summary brief and technical.
     $cancelButton = New-Object System.Windows.Forms.Button
     $cancelButton.Text = "Cancel"
     $cancelButton.Font = New-Object System.Drawing.Font("Segoe UI", 10)
-    $cancelButton.Location = New-Object System.Drawing.Point(565, 460)
+    $cancelButton.Location = New-Object System.Drawing.Point(565, 530)
     $cancelButton.Size = New-Object System.Drawing.Size(100, 35)
     $cancelButton.BackColor = [System.Drawing.Color]::FromArgb(120, 120, 120)
     $cancelButton.ForeColor = [System.Drawing.Color]::White
@@ -683,7 +715,9 @@ Keep the summary brief and technical.
     # Start button click handler
     $startButton.Add_Click({
         $csvPath = $csvPathBox.Text.Trim()
-        $promptText = $promptBox.Text
+        $instructionText = $instructionBox.Text
+        $columnName = $columnBox.Text.Trim()
+        $resumeFlag = $resumeCheck.Checked
 
         if ([string]::IsNullOrEmpty($csvPath)) {
             [System.Windows.Forms.MessageBox]::Show(
@@ -705,15 +739,28 @@ Keep the summary brief and technical.
             return
         }
 
-        # Save prompt to temp file to avoid quoting issues
-        $tempPromptFile = [System.IO.Path]::GetTempFileName()
-        [System.IO.File]::WriteAllText($tempPromptFile, $promptText, [System.Text.UTF8Encoding]::new($false))
+        if ([string]::IsNullOrEmpty($columnName)) {
+            [System.Windows.Forms.MessageBox]::Show(
+                "Please enter a column name for the results.",
+                "Missing Column Name",
+                [System.Windows.Forms.MessageBoxButtons]::OK,
+                [System.Windows.Forms.MessageBoxIcon]::Warning
+            )
+            return
+        }
+
+        # Save instruction to temp file to avoid quoting issues
+        $tempInstructionFile = [System.IO.Path]::GetTempFileName()
+        [System.IO.File]::WriteAllText($tempInstructionFile, $instructionText, [System.Text.UTF8Encoding]::new($false))
 
         # Build the command to run
         $scriptPath = Join-Path $scriptDir "Process-Files.ps1"
 
+        # Build arguments
+        $resumeArg = if ($resumeFlag) { "-Resume" } else { "" }
+
         # Launch in new window
-        $cmd = "powershell -ExecutionPolicy Bypass -Command `"& '$scriptPath' -CsvPath '$csvPath' -Prompt (Get-Content -Path '$tempPromptFile' -Raw)`" && echo. && echo Press Enter to close... && pause >nul"
+        $cmd = "powershell -ExecutionPolicy Bypass -Command `"& '$scriptPath' -CsvPath '$csvPath' -ResultColumn '$columnName' -Instruction (Get-Content -Path '$tempInstructionFile' -Raw) $resumeArg`" && echo. && echo Press Enter to close... && pause >nul"
         Start-Process cmd.exe -ArgumentList "/k", $cmd
 
         $dialog.Close()
