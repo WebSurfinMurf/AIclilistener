@@ -254,50 +254,12 @@ function Get-FilePreview {
     }
 }
 
-# Function to check if Codex service is running
-# Uses same detection method as demo.ps1
-function Test-CodexService {
-    param([string]$PipeName)
-
-    try {
-        # Try to send a ping command via CodexClient
-        $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-        $clientPath = Join-Path $scriptDir "CodexClient.ps1"
-
-        if (-not (Test-Path $clientPath)) {
-            Write-Log "CodexClient.ps1 not found at: $clientPath" "Warning"
-            return $false
-        }
-
-        $pingResult = & $clientPath -PipeName $PipeName -Command "ping" -Raw 2>&1
-        return ($pingResult -like "*pong*")
-    } catch {
-        return $false
-    }
-}
-
 # Main script
 Write-Host ""
 Write-Host "============================================" -ForegroundColor Cyan
 Write-Host "  File Processor using Codex CLI" -ForegroundColor Cyan
 Write-Host "============================================" -ForegroundColor Cyan
 Write-Host ""
-
-# Check if Codex service is running
-Write-Log "Checking if Codex service is running..." "Info"
-if (-not (Test-CodexService -PipeName $PipeName)) {
-    Write-Host ""
-    Write-Host "ERROR: Codex service is not running!" -ForegroundColor Red
-    Write-Host ""
-    Write-Host "Please start the service first:" -ForegroundColor Yellow
-    Write-Host "  1. Run CodexService.ps1 from the Menu" -ForegroundColor Yellow
-    Write-Host "  2. Or run: .\CodexService.ps1" -ForegroundColor Yellow
-    Write-Host ""
-    Write-Host "Press any key to exit..." -ForegroundColor Gray
-    $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
-    exit 1
-}
-Write-Log "Codex service is running" "Success"
 
 # Validate input
 if (-not (Test-Path $CsvPath)) {
