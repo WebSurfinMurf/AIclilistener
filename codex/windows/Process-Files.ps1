@@ -255,6 +255,7 @@ function Get-FilePreview {
 }
 
 # Function to check if Codex service is running
+# Uses same detection method as demo.ps1
 function Test-CodexService {
     param([string]$PipeName)
 
@@ -268,12 +269,8 @@ function Test-CodexService {
             return $false
         }
 
-        $output = & $clientPath -PipeName $PipeName -Command "ping" -Raw 2>&1
-        $outputStr = $output | Out-String
-        if ($outputStr -match '"status"\s*:\s*"success"') {
-            return $true
-        }
-        return $false
+        $pingResult = & $clientPath -PipeName $PipeName -Command "ping" -Raw 2>&1
+        return ($pingResult -like "*pong*")
     } catch {
         return $false
     }
