@@ -258,29 +258,20 @@ function Get-FilePreview {
 function Test-CodexService {
     param([string]$PipeName)
 
-    $pipePath = "\\.\pipe\$PipeName"
-
-    # Check if pipe exists
     try {
-        $pipeExists = [System.IO.Directory]::GetFiles("\\.\pipe\") | Where-Object { $_ -eq $pipePath }
-        if (-not $pipeExists) {
-            return $false
-        }
-
-        # Try to send a ping command
-        $scriptDir = Split-Path -Parent $MyInvocation.ScriptName
+        # Try to send a ping command via CodexClient
+        $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
         $clientPath = Join-Path $scriptDir "CodexClient.ps1"
 
         if (-not (Test-Path $clientPath)) {
-            Write-Log "CodexClient.ps1 not found" "Warning"
+            Write-Log "CodexClient.ps1 not found at: $clientPath" "Warning"
             return $false
         }
 
         $output = & $clientPath -PipeName $PipeName -Command "ping" -Raw 2>&1
-        foreach ($line in $output) {
-            if ($line -match '"status"\s*:\s*"success"') {
-                return $true
-            }
+        $outputStr = $output | Out-String
+        if ($outputStr -match '"status"\s*:\s*"success"') {
+            return $true
         }
         return $false
     } catch {
