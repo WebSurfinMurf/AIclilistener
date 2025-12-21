@@ -254,12 +254,62 @@ function Get-FilePreview {
     }
 }
 
+# Function to check if Codex service is running
+function Test-CodexService {
+    param([string]$PipeName)
+
+    $pipePath = "\\.\pipe\$PipeName"
+
+    # Check if pipe exists
+    try {
+        $pipeExists = [System.IO.Directory]::GetFiles("\\.\pipe\") | Where-Object { $_ -eq $pipePath }
+        if (-not $pipeExists) {
+            return $false
+        }
+
+        # Try to send a ping command
+        $scriptDir = Split-Path -Parent $MyInvocation.ScriptName
+        $clientPath = Join-Path $scriptDir "CodexClient.ps1"
+
+        if (-not (Test-Path $clientPath)) {
+            Write-Log "CodexClient.ps1 not found" "Warning"
+            return $false
+        }
+
+        $output = & $clientPath -PipeName $PipeName -Command "ping" -Raw 2>&1
+        foreach ($line in $output) {
+            if ($line -match '"status"\s*:\s*"success"') {
+                return $true
+            }
+        }
+        return $false
+    } catch {
+        return $false
+    }
+}
+
 # Main script
 Write-Host ""
 Write-Host "============================================" -ForegroundColor Cyan
 Write-Host "  File Processor using Codex CLI" -ForegroundColor Cyan
 Write-Host "============================================" -ForegroundColor Cyan
 Write-Host ""
+
+# Check if Codex service is running
+Write-Log "Checking if Codex service is running..." "Info"
+if (-not (Test-CodexService -PipeName $PipeName)) {
+    Write-Host ""
+    Write-Host "ERROR: Codex service is not running!" -ForegroundColor Red
+    Write-Host ""
+    Write-Host "Please start the service first:" -ForegroundColor Yellow
+    Write-Host "  1. Run CodexService.ps1 from the Menu" -ForegroundColor Yellow
+    Write-Host "  2. Or run: .\CodexService.ps1" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "Press any key to exit..." -ForegroundColor Gray
+    $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+    exit 1
+}
+Write-Log "Codex service is running" "Success"
 
 # Validate input
 if (-not (Test-Path $CsvPath)) {
