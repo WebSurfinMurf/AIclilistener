@@ -613,11 +613,23 @@ Keep the summary brief and technical.
     $statusText.Font = New-Object System.Drawing.Font("Segoe UI", 9)
     $statusPanel.Controls.Add($statusText)
 
+    # Start Service button
+    $startServiceButton = New-Object System.Windows.Forms.Button
+    $startServiceButton.Text = "Start Service"
+    $startServiceButton.Font = New-Object System.Drawing.Font("Segoe UI", 8)
+    $startServiceButton.Location = New-Object System.Drawing.Point(450, 3)
+    $startServiceButton.Size = New-Object System.Drawing.Size(90, 24)
+    $startServiceButton.FlatStyle = "Flat"
+    $startServiceButton.BackColor = [System.Drawing.Color]::FromArgb(46, 125, 50)
+    $startServiceButton.ForeColor = [System.Drawing.Color]::White
+    $startServiceButton.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $statusPanel.Controls.Add($startServiceButton)
+
     # Refresh button
     $refreshButton = New-Object System.Windows.Forms.Button
     $refreshButton.Text = "Refresh"
     $refreshButton.Font = New-Object System.Drawing.Font("Segoe UI", 8)
-    $refreshButton.Location = New-Object System.Drawing.Point(560, 3)
+    $refreshButton.Location = New-Object System.Drawing.Point(550, 3)
     $refreshButton.Size = New-Object System.Drawing.Size(70, 24)
     $refreshButton.FlatStyle = "Flat"
     $refreshButton.BackColor = [System.Drawing.Color]::FromArgb(200, 200, 200)
@@ -638,6 +650,37 @@ Keep the summary brief and technical.
         }
         return $isRunning
     }
+
+    # Start Service click handler - spawns CodexService.ps1 in new window
+    $startServiceButton.Add_Click({
+        $servicePath = Join-Path $scriptDir "CodexService.ps1"
+        if (-not (Test-Path $servicePath)) {
+            [System.Windows.Forms.MessageBox]::Show(
+                "CodexService.ps1 not found!",
+                "Error",
+                [System.Windows.Forms.MessageBoxButtons]::OK,
+                [System.Windows.Forms.MessageBoxIcon]::Error
+            )
+            return
+        }
+
+        # Show folder browser for working directory
+        $folderBrowser = New-Object System.Windows.Forms.FolderBrowserDialog
+        $folderBrowser.Description = "Select a working directory for the Codex agent.`n`nThe agent can WRITE to this folder and READ from anywhere."
+        $folderBrowser.ShowNewFolderButton = $true
+
+        $folderResult = $folderBrowser.ShowDialog()
+        if ($folderResult -ne [System.Windows.Forms.DialogResult]::OK) {
+            return
+        }
+
+        $selectedDir = $folderBrowser.SelectedPath
+        Start-Process cmd.exe -ArgumentList "/k", "cd /d `"$selectedDir`" && powershell -ExecutionPolicy Bypass -File `"$servicePath`""
+
+        # Wait a moment then refresh status
+        Start-Sleep -Seconds 2
+        & $updateStatus
+    })
 
     $refreshButton.Add_Click({ & $updateStatus })
 
@@ -792,7 +835,7 @@ Keep the summary brief and technical.
 
         if (-not $isRunning) {
             [System.Windows.Forms.MessageBox]::Show(
-                "The Codex Service is not running!`n`nPlease start it first:`n`n1. Click 'Cancel' to return to the main menu`n2. Click 'CodexService.ps1' to start the service`n3. Then come back to Process Files`n`nClick OK to try again.",
+                "The Codex Service is not running!`n`nClick the 'Start Service' button at the top to launch it.`n`nClick OK to return to the dialog.",
                 "Codex Service Not Running",
                 [System.Windows.Forms.MessageBoxButtons]::OK,
                 [System.Windows.Forms.MessageBoxIcon]::Warning
