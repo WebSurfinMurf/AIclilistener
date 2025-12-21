@@ -151,7 +151,20 @@ $result = .\CodexClient.ps1 -Prompt "Hello" -Raw
 
 Batch process files using a CSV input with custom AI prompts. Each file gets processed with fresh, isolated context.
 
-### Basic Usage
+### Using from GUI Menu (Recommended)
+
+Click **Process-Files.ps1** in the Menu to open a configuration dialog:
+
+- **Service Status**: Red/green indicator shows if CodexService is running
+- **Start Service**: Button to launch CodexService directly from the dialog
+- **Instruction**: Customize what the AI does with each file
+- **Result Column**: Name the output column (replaces if exists, adds if not)
+- **CSV Selection**: Browse for your input CSV file
+- **Resume Option**: Skip already-processed files
+
+The window automatically closes when processing completes and you press Enter.
+
+### Command Line Usage
 ```powershell
 # Create CSV with file paths
 @"

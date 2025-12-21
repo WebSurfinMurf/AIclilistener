@@ -334,6 +334,12 @@ $prompt | & codex exec --json
 
 ## Version History
 
+### v2.1.0
+- **Feature**: Service status indicator (red/green) in Process Files dialog
+- **Feature**: "Start Service" button to launch CodexService directly from dialog
+- **Feature**: Window auto-closes after pressing Enter when processing completes
+- **Fix**: Service detection now uses `*pong*` pattern (matches demo.ps1)
+
 ### v2.0.0
 - **Breaking**: Renamed `Summarize-Files.ps1` to `Process-Files.ps1`
 - **Feature**: Custom prompt support with placeholders (`{fileName}`, `{extension}`, `{filePath}`, `{fileContent}`)
