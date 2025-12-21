@@ -77,6 +77,18 @@ AIclilistener provides persistent listener services for AI CLI tools, enabling J
 }
 ```
 
+## Gotchas
+
+### Service Detection
+When checking if the Codex service is running from a script, use the `*pong*` pattern:
+```powershell
+$pingResult = & .\CodexClient.ps1 -Command ping -Raw 2>&1
+if ($pingResult -like "*pong*") {
+    # Service is running
+}
+```
+Do NOT use JSON regex patterns like `'"status"\s*:\s*"success"'` - they fail due to PowerShell output handling quirks.
+
 ## Dependencies
 
 - PowerShell 5.1+ (Windows built-in)
