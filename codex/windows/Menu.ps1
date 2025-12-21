@@ -837,14 +837,6 @@ $buttonSpacing = 8
 $buttonWidth = 565
 
 foreach ($script in $scripts) {
-    # For non-Setup items, check if script exists
-    if (-not $script.SetupMenu) {
-        $scriptPath = Join-Path $scriptDir $script.Name
-        if (-not (Test-Path $scriptPath)) {
-            continue
-        }
-    }
-
     # Create button
     $button = New-Object System.Windows.Forms.Button
     $btnHeight = if ($script.Height) { $script.Height } else { $buttonHeight }
