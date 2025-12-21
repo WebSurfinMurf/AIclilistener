@@ -883,9 +883,9 @@ Keep the summary brief and technical.
         # Build arguments
         $resumeArg = if ($resumeFlag) { "-Resume" } else { "" }
 
-        # Launch in new window
+        # Launch in new window (using /c so window closes after pause)
         $cmd = "powershell -ExecutionPolicy Bypass -Command `"& '$scriptPath' -CsvPath '$csvPath' -ResultColumn '$columnName' -Instruction (Get-Content -Path '$tempInstructionFile' -Raw) $resumeArg`" && echo. && echo Press Enter to close... && pause >nul"
-        Start-Process cmd.exe -ArgumentList "/k", $cmd
+        Start-Process cmd.exe -ArgumentList "/c", $cmd
 
         $dialog.Close()
     })
