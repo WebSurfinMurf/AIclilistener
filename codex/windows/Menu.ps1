@@ -551,6 +551,24 @@ Remove-Item '$tempFile' -Force -ErrorAction SilentlyContinue
     [void]$dialog.ShowDialog($ParentForm)
 }
 
+# Function to check if Codex service is running (for Menu dialogs)
+function Test-CodexServiceRunning {
+    param([string]$PipeName = "codex-service")
+
+    try {
+        $clientPath = Join-Path $scriptDir "CodexClient.ps1"
+        if (-not (Test-Path $clientPath)) {
+            return $false
+        }
+
+        $output = & $clientPath -PipeName $PipeName -Command "ping" -Raw 2>&1
+        $outputStr = $output | Out-String
+        return ($outputStr -match '"status"\s*:\s*"success"')
+    } catch {
+        return $false
+    }
+}
+
 # Function to show the Process Files dialog
 function Show-ProcessFilesDialog {
     param([System.Windows.Forms.Form]$ParentForm)
@@ -567,19 +585,68 @@ Keep the summary brief and technical.
     # Create dialog
     $dialog = New-Object System.Windows.Forms.Form
     $dialog.Text = "Process Files - Configure AI Instruction"
-    $dialog.Size = New-Object System.Drawing.Size(700, 620)
+    $dialog.Size = New-Object System.Drawing.Size(700, 660)
     $dialog.StartPosition = "CenterParent"
     $dialog.FormBorderStyle = "FixedDialog"
     $dialog.MaximizeBox = $false
     $dialog.MinimizeBox = $false
     $dialog.BackColor = [System.Drawing.Color]::FromArgb(250, 250, 250)
 
-    # Info note at top
+    # Service status panel at top
+    $statusPanel = New-Object System.Windows.Forms.Panel
+    $statusPanel.Location = New-Object System.Drawing.Point(20, 10)
+    $statusPanel.Size = New-Object System.Drawing.Size(645, 30)
+    $statusPanel.BackColor = [System.Drawing.Color]::FromArgb(240, 240, 240)
+    $dialog.Controls.Add($statusPanel)
+
+    # Status indicator (circle)
+    $statusLight = New-Object System.Windows.Forms.Label
+    $statusLight.Location = New-Object System.Drawing.Point(10, 7)
+    $statusLight.Size = New-Object System.Drawing.Size(16, 16)
+    $statusLight.Text = ""
+    $statusPanel.Controls.Add($statusLight)
+
+    # Status text
+    $statusText = New-Object System.Windows.Forms.Label
+    $statusText.Location = New-Object System.Drawing.Point(32, 5)
+    $statusText.Size = New-Object System.Drawing.Size(400, 20)
+    $statusText.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+    $statusPanel.Controls.Add($statusText)
+
+    # Refresh button
+    $refreshButton = New-Object System.Windows.Forms.Button
+    $refreshButton.Text = "Refresh"
+    $refreshButton.Font = New-Object System.Drawing.Font("Segoe UI", 8)
+    $refreshButton.Location = New-Object System.Drawing.Point(560, 3)
+    $refreshButton.Size = New-Object System.Drawing.Size(70, 24)
+    $refreshButton.FlatStyle = "Flat"
+    $refreshButton.BackColor = [System.Drawing.Color]::FromArgb(200, 200, 200)
+    $refreshButton.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $statusPanel.Controls.Add($refreshButton)
+
+    # Function to update status display
+    $updateStatus = {
+        $isRunning = Test-CodexServiceRunning
+        if ($isRunning) {
+            $statusLight.BackColor = [System.Drawing.Color]::FromArgb(46, 125, 50)  # Green
+            $statusText.Text = "Codex Service: RUNNING"
+            $statusText.ForeColor = [System.Drawing.Color]::FromArgb(46, 125, 50)
+        } else {
+            $statusLight.BackColor = [System.Drawing.Color]::FromArgb(200, 0, 0)  # Red
+            $statusText.Text = "Codex Service: NOT RUNNING"
+            $statusText.ForeColor = [System.Drawing.Color]::FromArgb(200, 0, 0)
+        }
+        return $isRunning
+    }
+
+    $refreshButton.Add_Click({ & $updateStatus })
+
+    # Info note
     $noteLabel = New-Object System.Windows.Forms.Label
     $noteLabel.Text = "File metadata and contents are automatically sent to the AI. Enter your instruction below."
     $noteLabel.Font = New-Object System.Drawing.Font("Segoe UI", 9)
     $noteLabel.ForeColor = [System.Drawing.Color]::FromArgb(100, 100, 100)
-    $noteLabel.Location = New-Object System.Drawing.Point(20, 12)
+    $noteLabel.Location = New-Object System.Drawing.Point(20, 48)
     $noteLabel.Size = New-Object System.Drawing.Size(645, 20)
     $dialog.Controls.Add($noteLabel)
 
@@ -588,7 +655,7 @@ Keep the summary brief and technical.
     $prefixLabel.Text = "The AI will receive:  FILE: [name]  TYPE: [ext]  PATH: [path]  --- FILE CONTENTS ---  [content]  --- END ---"
     $prefixLabel.Font = New-Object System.Drawing.Font("Consolas", 8)
     $prefixLabel.ForeColor = [System.Drawing.Color]::FromArgb(120, 120, 120)
-    $prefixLabel.Location = New-Object System.Drawing.Point(20, 32)
+    $prefixLabel.Location = New-Object System.Drawing.Point(20, 68)
     $prefixLabel.Size = New-Object System.Drawing.Size(645, 18)
     $dialog.Controls.Add($prefixLabel)
 
@@ -596,7 +663,7 @@ Keep the summary brief and technical.
     $instructionLabel = New-Object System.Windows.Forms.Label
     $instructionLabel.Text = "Your Instruction to the AI:"
     $instructionLabel.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
-    $instructionLabel.Location = New-Object System.Drawing.Point(20, 58)
+    $instructionLabel.Location = New-Object System.Drawing.Point(20, 94)
     $instructionLabel.Size = New-Object System.Drawing.Size(250, 25)
     $dialog.Controls.Add($instructionLabel)
 
@@ -605,7 +672,7 @@ Keep the summary brief and technical.
     $instructionBox.Multiline = $true
     $instructionBox.ScrollBars = "Vertical"
     $instructionBox.Font = New-Object System.Drawing.Font("Consolas", 9)
-    $instructionBox.Location = New-Object System.Drawing.Point(20, 85)
+    $instructionBox.Location = New-Object System.Drawing.Point(20, 120)
     $instructionBox.Size = New-Object System.Drawing.Size(645, 200)
     $instructionBox.AcceptsReturn = $true
     $instructionBox.Text = $defaultInstruction
@@ -615,14 +682,14 @@ Keep the summary brief and technical.
     $columnLabel = New-Object System.Windows.Forms.Label
     $columnLabel.Text = "Result Column Name:"
     $columnLabel.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
-    $columnLabel.Location = New-Object System.Drawing.Point(20, 300)
+    $columnLabel.Location = New-Object System.Drawing.Point(20, 335)
     $columnLabel.Size = New-Object System.Drawing.Size(200, 25)
     $dialog.Controls.Add($columnLabel)
 
     # Column name textbox
     $columnBox = New-Object System.Windows.Forms.TextBox
     $columnBox.Font = New-Object System.Drawing.Font("Consolas", 10)
-    $columnBox.Location = New-Object System.Drawing.Point(220, 298)
+    $columnBox.Location = New-Object System.Drawing.Point(220, 333)
     $columnBox.Size = New-Object System.Drawing.Size(200, 25)
     $columnBox.Text = "Summary"
     $dialog.Controls.Add($columnBox)
@@ -632,7 +699,7 @@ Keep the summary brief and technical.
     $columnWarning.Text = "WARNING: If this column exists in CSV, it will be REPLACED. Otherwise, it will be ADDED."
     $columnWarning.Font = New-Object System.Drawing.Font("Segoe UI", 9)
     $columnWarning.ForeColor = [System.Drawing.Color]::FromArgb(200, 120, 0)
-    $columnWarning.Location = New-Object System.Drawing.Point(20, 328)
+    $columnWarning.Location = New-Object System.Drawing.Point(20, 363)
     $columnWarning.Size = New-Object System.Drawing.Size(645, 20)
     $dialog.Controls.Add($columnWarning)
 
@@ -640,33 +707,33 @@ Keep the summary brief and technical.
     $csvLabel = New-Object System.Windows.Forms.Label
     $csvLabel.Text = "CSV File (first column must contain file paths):"
     $csvLabel.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
-    $csvLabel.Location = New-Object System.Drawing.Point(20, 360)
+    $csvLabel.Location = New-Object System.Drawing.Point(20, 395)
     $csvLabel.Size = New-Object System.Drawing.Size(400, 25)
     $dialog.Controls.Add($csvLabel)
 
     # CSV path textbox
     $csvPathBox = New-Object System.Windows.Forms.TextBox
     $csvPathBox.Font = New-Object System.Drawing.Font("Consolas", 10)
-    $csvPathBox.Location = New-Object System.Drawing.Point(20, 388)
+    $csvPathBox.Location = New-Object System.Drawing.Point(20, 423)
     $csvPathBox.Size = New-Object System.Drawing.Size(540, 25)
     $csvPathBox.ReadOnly = $true
     $csvPathBox.BackColor = [System.Drawing.Color]::White
     $dialog.Controls.Add($csvPathBox)
 
     # Browse button
-    $browseButton = New-Object System.Windows.Forms.Button
-    $browseButton.Text = "Browse..."
-    $browseButton.Font = New-Object System.Drawing.Font("Segoe UI", 9)
-    $browseButton.Location = New-Object System.Drawing.Point(570, 386)
-    $browseButton.Size = New-Object System.Drawing.Size(95, 28)
-    $browseButton.BackColor = [System.Drawing.Color]::FromArgb(96, 125, 139)
-    $browseButton.ForeColor = [System.Drawing.Color]::White
-    $browseButton.FlatStyle = "Flat"
-    $browseButton.FlatAppearance.BorderSize = 0
-    $browseButton.Cursor = [System.Windows.Forms.Cursors]::Hand
-    $dialog.Controls.Add($browseButton)
+    $browseButton2 = New-Object System.Windows.Forms.Button
+    $browseButton2.Text = "Browse..."
+    $browseButton2.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+    $browseButton2.Location = New-Object System.Drawing.Point(570, 421)
+    $browseButton2.Size = New-Object System.Drawing.Size(95, 28)
+    $browseButton2.BackColor = [System.Drawing.Color]::FromArgb(96, 125, 139)
+    $browseButton2.ForeColor = [System.Drawing.Color]::White
+    $browseButton2.FlatStyle = "Flat"
+    $browseButton2.FlatAppearance.BorderSize = 0
+    $browseButton2.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $dialog.Controls.Add($browseButton2)
 
-    $browseButton.Add_Click({
+    $browseButton2.Add_Click({
         $openDialog = New-Object System.Windows.Forms.OpenFileDialog
         $openDialog.Title = "Select CSV file with file paths to process"
         $openDialog.Filter = "CSV files (*.csv)|*.csv|All files (*.*)|*.*"
@@ -681,7 +748,7 @@ Keep the summary brief and technical.
     $resumeCheck = New-Object System.Windows.Forms.CheckBox
     $resumeCheck.Text = "Resume (skip already processed files)"
     $resumeCheck.Font = New-Object System.Drawing.Font("Segoe UI", 9)
-    $resumeCheck.Location = New-Object System.Drawing.Point(20, 420)
+    $resumeCheck.Location = New-Object System.Drawing.Point(20, 458)
     $resumeCheck.Size = New-Object System.Drawing.Size(300, 25)
     $dialog.Controls.Add($resumeCheck)
 
@@ -689,7 +756,7 @@ Keep the summary brief and technical.
     $startButton = New-Object System.Windows.Forms.Button
     $startButton.Text = "Start Processing"
     $startButton.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
-    $startButton.Location = New-Object System.Drawing.Point(20, 530)
+    $startButton.Location = New-Object System.Drawing.Point(20, 570)
     $startButton.Size = New-Object System.Drawing.Size(150, 35)
     $startButton.BackColor = [System.Drawing.Color]::FromArgb(156, 39, 176)
     $startButton.ForeColor = [System.Drawing.Color]::White
@@ -702,7 +769,7 @@ Keep the summary brief and technical.
     $cancelButton = New-Object System.Windows.Forms.Button
     $cancelButton.Text = "Cancel"
     $cancelButton.Font = New-Object System.Drawing.Font("Segoe UI", 10)
-    $cancelButton.Location = New-Object System.Drawing.Point(565, 530)
+    $cancelButton.Location = New-Object System.Drawing.Point(565, 570)
     $cancelButton.Size = New-Object System.Drawing.Size(100, 35)
     $cancelButton.BackColor = [System.Drawing.Color]::FromArgb(120, 120, 120)
     $cancelButton.ForeColor = [System.Drawing.Color]::White
@@ -718,6 +785,20 @@ Keep the summary brief and technical.
         $instructionText = $instructionBox.Text
         $columnName = $columnBox.Text.Trim()
         $resumeFlag = $resumeCheck.Checked
+
+        # Re-check if service is running
+        $isRunning = Test-CodexServiceRunning
+        & $updateStatus  # Update the display
+
+        if (-not $isRunning) {
+            [System.Windows.Forms.MessageBox]::Show(
+                "The Codex Service is not running!`n`nPlease start it first:`n`n1. Click 'Cancel' to return to the main menu`n2. Click 'CodexService.ps1' to start the service`n3. Then come back to Process Files`n`nClick OK to try again.",
+                "Codex Service Not Running",
+                [System.Windows.Forms.MessageBoxButtons]::OK,
+                [System.Windows.Forms.MessageBoxIcon]::Warning
+            )
+            return
+        }
 
         if ([string]::IsNullOrEmpty($csvPath)) {
             [System.Windows.Forms.MessageBox]::Show(
@@ -765,6 +846,9 @@ Keep the summary brief and technical.
 
         $dialog.Close()
     })
+
+    # Check status when dialog opens
+    $dialog.Add_Shown({ & $updateStatus })
 
     [void]$dialog.ShowDialog($ParentForm)
 }
