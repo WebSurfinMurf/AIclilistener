@@ -233,7 +233,7 @@ function Show-SetupMenu {
             } elseif ($info.AboutDialog) {
                 $aboutDialog = New-Object System.Windows.Forms.Form
                 $aboutDialog.Text = "About AIclilistener"
-                $aboutDialog.Size = New-Object System.Drawing.Size(480, 320)
+                $aboutDialog.Size = New-Object System.Drawing.Size(480, 350)
                 $aboutDialog.StartPosition = "CenterParent"
                 $aboutDialog.FormBorderStyle = "FixedDialog"
                 $aboutDialog.MaximizeBox = $false
@@ -280,11 +280,33 @@ function Show-SetupMenu {
                 })
                 $aboutDialog.Controls.Add($sourceLink)
 
+                # Get git commit ID dynamically
+                $commitId = "unknown"
+                try {
+                    $gitOutput = & git -C $scriptDir rev-parse --short HEAD 2>&1
+                    if ($LASTEXITCODE -eq 0) {
+                        $commitId = $gitOutput.Trim()
+                    }
+                } catch { }
+
+                $commitLink = New-Object System.Windows.Forms.LinkLabel
+                $commitLink.Text = "VERSION: $commitId (click to copy commit URL)"
+                $commitLink.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+                $commitLink.Location = New-Object System.Drawing.Point(20, 235)
+                $commitLink.Size = New-Object System.Drawing.Size(430, 20)
+                $commitLink.LinkColor = [System.Drawing.Color]::FromArgb(25, 118, 210)
+                $commitLink.Add_LinkClicked({
+                    $commitUrl = "https://github.com/WebSurfinMurf/AIclilistener/commit/$commitId"
+                    [System.Windows.Forms.Clipboard]::SetText($commitUrl)
+                    $commitLink.Text = "VERSION: $commitId (copied!)"
+                })
+                $aboutDialog.Controls.Add($commitLink)
+
                 $okBtn = New-Object System.Windows.Forms.Button
                 $okBtn.Text = "OK"
                 $okBtn.Font = New-Object System.Drawing.Font("Segoe UI", 9)
                 $okBtn.Size = New-Object System.Drawing.Size(80, 30)
-                $okBtn.Location = New-Object System.Drawing.Point(190, 245)
+                $okBtn.Location = New-Object System.Drawing.Point(190, 270)
                 $okBtn.BackColor = [System.Drawing.Color]::FromArgb(25, 118, 210)
                 $okBtn.ForeColor = [System.Drawing.Color]::White
                 $okBtn.FlatStyle = "Flat"
