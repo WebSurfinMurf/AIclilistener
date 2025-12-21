@@ -31,7 +31,7 @@ codex/windows/
 ├── StartCodex.ps1        # Launch Codex CLI with directory picker
 ├── CodexService.ps1      # Named Pipe service for JSON requests
 ├── CodexClient.ps1       # Client for sending requests to service
-├── Summarize-Files.ps1   # CSV batch processor
+├── Process-Files.ps1     # CSV batch processor with custom prompts
 ├── demo.ps1              # Interactive demo (in Setup menu)
 ├── Start-Service.bat     # Launcher with execution policy bypass
 ├── Install-Skill.ps1     # Deploy skill to Codex
@@ -134,7 +134,7 @@ $result = .\CodexClient.ps1 -Prompt "Hello" -Raw
 
 ---
 
-## Summarizing Files (CSV Batch Processing)
+## Processing Files (CSV Batch Processing)
 
 ### Basic Usage
 ```powershell
@@ -146,16 +146,26 @@ C:\Docs\report.xlsx,Excel
 C:\Presentations\deck.pptx,PowerPoint
 "@ | Out-File files.csv -Encoding UTF8
 
-# Run summarizer
-.\Summarize-Files.ps1 -CsvPath files.csv
+# Run with default summarization prompt
+.\Process-Files.ps1 -CsvPath files.csv
 
-# Output: files_summarized.csv with Summary column added
+# Run with custom prompt
+.\Process-Files.ps1 -CsvPath files.csv -Prompt "Extract all function names from: {fileContent}"
+
+# Output: files_processed.csv with Result column added
 ```
+
+### Custom Prompts
+Use placeholders in your prompt:
+- `{fileName}` - File name (e.g., "report.xlsx")
+- `{extension}` - File extension (e.g., ".xlsx")
+- `{filePath}` - Full file path
+- `{fileContent}` - Extracted file content
 
 ### Resume After Interruption
 ```powershell
 # If script crashes or is interrupted, resume where you left off
-.\Summarize-Files.ps1 -CsvPath files.csv -Resume
+.\Process-Files.ps1 -CsvPath files.csv -Resume
 ```
 
 ### Supported File Formats
@@ -294,9 +304,10 @@ Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process
 - [ ] `.\CodexClient.ps1 -Command status` shows service info
 - [ ] `.\CodexClient.ps1 -Prompt "Hello"` returns a response
 - [ ] `.\demo.ps1` completes successfully
-- [ ] CSV summarizer processes text files
-- [ ] CSV summarizer processes Office files (if Office installed)
+- [ ] CSV processor processes text files
+- [ ] CSV processor processes Office files (if Office installed)
 - [ ] `-Resume` flag skips already-processed files
+- [ ] Custom prompts work with placeholders
 
 ---
 
@@ -322,6 +333,13 @@ $prompt | & codex exec --json
 ---
 
 ## Version History
+
+### v2.0.0
+- **Breaking**: Renamed `Summarize-Files.ps1` to `Process-Files.ps1`
+- **Feature**: Custom prompt support with placeholders (`{fileName}`, `{extension}`, `{filePath}`, `{fileContent}`)
+- **Feature**: Menu now shows prompt configuration dialog before processing
+- Renamed `-SummaryColumn` parameter to `-ResultColumn`
+- Output files now use `_processed.csv` suffix instead of `_summarized.csv`
 
 ### v1.4.0
 - **Feature**: Full disk read access enabled by default

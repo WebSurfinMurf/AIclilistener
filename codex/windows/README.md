@@ -31,7 +31,7 @@ Teach Codex to use AIclilistener automatically for context-isolated tasks:
 This copies the skill to `~/.codex/skills/aiclilistener/` and enables skills in your config.
 
 ### 3. Install PDF Support (Optional)
-To extract text from PDF files (for Summarize-Files.ps1):
+To extract text from PDF files (for Process-Files.ps1):
 ```powershell
 .\Install-PdfToText.ps1
 ```
@@ -147,9 +147,9 @@ $result = .\CodexClient.ps1 -Prompt "Hello" -Raw
 
 ---
 
-## Summarize-Files.ps1
+## Process-Files.ps1
 
-Batch process files using a CSV input. Each file gets summarized with fresh, isolated context.
+Batch process files using a CSV input with custom AI prompts. Each file gets processed with fresh, isolated context.
 
 ### Basic Usage
 ```powershell
@@ -161,15 +161,25 @@ C:\code\app.py,Code
 C:\data\analysis.xlsx,Excel
 "@ | Out-File files.csv -Encoding UTF8
 
-# Run summarizer
-.\Summarize-Files.ps1 -CsvPath files.csv
+# Run with default summarization prompt
+.\Process-Files.ps1 -CsvPath files.csv
 
-# Output: files_summarized.csv with Summary column added
+# Run with custom prompt
+.\Process-Files.ps1 -CsvPath files.csv -Prompt "Extract all function names from: {fileContent}"
+
+# Output: files_processed.csv with Result column added
 ```
+
+### Custom Prompts
+Use placeholders in your prompt template:
+- `{fileName}` - File name (e.g., "report.xlsx")
+- `{extension}` - File extension (e.g., ".xlsx")
+- `{filePath}` - Full file path
+- `{fileContent}` - Extracted file content
 
 ### Resume After Interruption
 ```powershell
-.\Summarize-Files.ps1 -CsvPath files.csv -Resume
+.\Process-Files.ps1 -CsvPath files.csv -Resume
 ```
 
 ### Supported File Types
@@ -188,9 +198,10 @@ C:\data\analysis.xlsx,Excel
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `-CsvPath` | - | Input CSV file |
-| `-OutputPath` | {input}_summarized.csv | Output file |
+| `-Prompt` | Summarization prompt | Custom prompt template with placeholders |
+| `-OutputPath` | {input}_processed.csv | Output file |
 | `-FileColumn` | First column | Column with file paths |
-| `-SummaryColumn` | Summary | Name for summary column |
+| `-ResultColumn` | Result | Name for result column |
 | `-MaxChars` | 50000 | Max chars to read per file |
 | `-Resume` | false | Skip already-processed files |
 
@@ -286,7 +297,7 @@ codex/windows/
 ├── StartCodex.ps1        # Launch Codex CLI with directory picker
 ├── CodexService.ps1      # Named Pipe service for JSON requests
 ├── CodexClient.ps1       # Client for sending requests to service
-├── Summarize-Files.ps1   # Batch file summarizer via CSV
+├── Process-Files.ps1     # Batch file processor with custom prompts
 ├── Start-Service.bat     # Service launcher with execution policy bypass
 ├── demo.ps1              # Interactive demo (in Setup menu)
 ├── Install-Skill.ps1     # Deploy skill to Codex

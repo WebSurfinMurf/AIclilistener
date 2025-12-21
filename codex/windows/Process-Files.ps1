@@ -1,16 +1,24 @@
 <#
 .SYNOPSIS
-    Summarize files listed in a CSV using Codex CLI
+    Process files listed in a CSV using Codex CLI with custom prompts
 
 .DESCRIPTION
     Reads a CSV file where column 1 contains file paths, sends each file to Codex
-    for summarization, and adds the summary to a new column in the CSV.
+    with a customizable prompt, and adds the result to a new column in the CSV.
 
 .PARAMETER CsvPath
     Path to the input CSV file
 
+.PARAMETER Prompt
+    The prompt template to send to the AI. Use placeholders:
+    {fileName} - File name (e.g., "report.xlsx")
+    {extension} - File extension (e.g., ".xlsx")
+    {filePath} - Full file path
+    {fileContent} - Extracted file content
+    Default is a summarization prompt.
+
 .PARAMETER OutputPath
-    Path for the output CSV (default: adds _summarized to input filename)
+    Path for the output CSV (default: adds _processed to input filename)
 
 .PARAMETER PipeName
     Named pipe to connect to (default: codex-service)
@@ -18,32 +26,37 @@
 .PARAMETER FileColumn
     Name of the column containing file paths (default: first column)
 
-.PARAMETER SummaryColumn
-    Name for the new summary column (default: Summary)
+.PARAMETER ResultColumn
+    Name for the new result column (default: Result)
 
 .PARAMETER MaxChars
-    Maximum characters to read from each file (default: 10000)
+    Maximum characters to read from each file (default: 50000)
 
 .EXAMPLE
-    .\Summarize-Files.ps1 -CsvPath "C:\files.csv"
+    .\Process-Files.ps1 -CsvPath "C:\files.csv"
 
 .EXAMPLE
-    .\Summarize-Files.ps1 -CsvPath "files.csv" -FileColumn "FilePath" -SummaryColumn "Description"
+    .\Process-Files.ps1 -CsvPath "files.csv" -Prompt "Extract all dates from: {fileContent}"
 
 .EXAMPLE
-    .\Summarize-Files.ps1 -CsvPath "files.csv" -Resume
+    .\Process-Files.ps1 -CsvPath "files.csv" -FileColumn "FilePath" -ResultColumn "Description"
 
 .EXAMPLE
-    .\Summarize-Files.ps1
+    .\Process-Files.ps1 -CsvPath "files.csv" -Resume
+
+.EXAMPLE
+    .\Process-Files.ps1
     # Opens file picker dialog to select CSV
 
 .NOTES
     Requires CodexService.ps1 to be running
-    Version: 1.3.0 - File picker dialog when no CSV specified
+    Version: 2.0.0 - Parameterized prompt support
 #>
 
 param(
     [string]$CsvPath,
+
+    [string]$Prompt,
 
     [string]$OutputPath,
 
@@ -51,12 +64,34 @@ param(
 
     [string]$FileColumn,
 
-    [string]$SummaryColumn = "Summary",
+    [string]$ResultColumn = "Result",
 
     [int]$MaxChars = 50000,
 
     [switch]$Resume
 )
+
+# Default prompt template if not provided
+if (-not $Prompt) {
+    $Prompt = @"
+Please read and summarize the following file.
+
+FILE: {fileName}
+TYPE: {extension}
+PATH: {filePath}
+
+--- FILE CONTENTS BEGIN ---
+{fileContent}
+--- FILE CONTENTS END ---
+
+Provide a concise summary (2-4 sentences) describing:
+1. What this file is/does
+2. Key functionality or content
+3. Any notable patterns or dependencies
+
+Keep the summary brief and technical.
+"@
+}
 
 # If no CSV path provided, show file picker dialog
 if (-not $CsvPath) {
@@ -64,7 +99,7 @@ if (-not $CsvPath) {
 
     # Show explanation dialog first
     $explanation = @"
-This tool reads a CSV and summarizes each file using AI.
+This tool reads a CSV and processes each file using AI with your custom prompt.
 
 REQUIRED:
 - First column must contain FULL PATHS to files
@@ -74,7 +109,7 @@ OPTIONAL:
 - Additional columns (Category, Notes, etc.) are kept as-is
 
 OUTPUT:
-- A new "Summary" column will be added to your CSV
+- A new "Result" column will be added to your CSV
 
 EXAMPLE INPUT:
 FilePath,Category
@@ -82,16 +117,16 @@ C:\Documents\report.docx,Reports
 C:\Code\app.py,Code
 
 EXAMPLE OUTPUT:
-FilePath,Category,Summary
-C:\Documents\report.docx,Reports,"A quarterly sales report..."
-C:\Code\app.py,Code,"A Python script that..."
+FilePath,Category,Result
+C:\Documents\report.docx,Reports,"AI response here..."
+C:\Code\app.py,Code,"AI response here..."
 
 Click OK to select your CSV file.
 "@
 
     $infoResult = [System.Windows.Forms.MessageBox]::Show(
         $explanation,
-        "Summarize Files - CSV Format",
+        "Process Files - CSV Format",
         [System.Windows.Forms.MessageBoxButtons]::OKCancel,
         [System.Windows.Forms.MessageBoxIcon]::Information
     )
@@ -103,7 +138,7 @@ Click OK to select your CSV file.
 
     # Now show file picker
     $dialog = New-Object System.Windows.Forms.OpenFileDialog
-    $dialog.Title = "Select CSV file with file paths to summarize"
+    $dialog.Title = "Select CSV file with file paths to process"
     $dialog.Filter = "CSV files (*.csv)|*.csv|All files (*.*)|*.*"
     $dialog.InitialDirectory = [Environment]::GetFolderPath('Desktop')
 
@@ -233,7 +268,7 @@ function Get-FilePreview {
 # Main script
 Write-Host ""
 Write-Host "============================================" -ForegroundColor Cyan
-Write-Host "  File Summarizer using Codex CLI" -ForegroundColor Cyan
+Write-Host "  File Processor using Codex CLI" -ForegroundColor Cyan
 Write-Host "============================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -304,14 +339,14 @@ if (-not $OutputPath) {
     $baseName = [System.IO.Path]::GetFileNameWithoutExtension($CsvPath)
     $dir = [System.IO.Path]::GetDirectoryName($CsvPath)
     if (-not $dir) { $dir = "." }
-    $OutputPath = Join-Path $dir "${baseName}_summarized.csv"
+    $OutputPath = Join-Path $dir "${baseName}_processed.csv"
 }
 
 Write-Log "Output will be saved to: $OutputPath" "Info"
 
 # Check for resume capability
 $alreadyProcessed = @{}
-$outputColumns = $columns + @($SummaryColumn)
+$outputColumns = $columns + @($ResultColumn)
 $isFirstWrite = $true
 
 if ($Resume -and (Test-Path $OutputPath)) {
@@ -324,8 +359,8 @@ if ($Resume -and (Test-Path $OutputPath)) {
             if (-not $fp) { $fp = $row.$FileColumn }
             if ($fp) {
                 $fp = $fp.Trim('"', "'", ' ')
-                if ($fp -and $row.$SummaryColumn -and $row.$SummaryColumn -notlike "[ERROR]*" -and $row.$SummaryColumn -notlike "[FILE NOT FOUND]*") {
-                    $alreadyProcessed[$fp] = $row.$SummaryColumn
+                if ($fp -and $row.$ResultColumn -and $row.$ResultColumn -notlike "[ERROR]*" -and $row.$ResultColumn -notlike "[FILE NOT FOUND]*") {
+                    $alreadyProcessed[$fp] = $row.$ResultColumn
                 }
             }
         }
@@ -380,7 +415,7 @@ foreach ($row in $csv) {
     # Check if file exists
     if (-not $filePath -or -not (Test-Path $filePath)) {
         Write-Log "File not found: $filePath" "Warning"
-        $resultRow[$SummaryColumn] = "[FILE NOT FOUND]"
+        $resultRow[$ResultColumn] = "[FILE NOT FOUND]"
         # Save incrementally
         [PSCustomObject]$resultRow | Export-Csv -Path $OutputPath -NoTypeInformation -Encoding UTF8 -Append:(-not $isFirstWrite)
         $isFirstWrite = $false
@@ -392,7 +427,7 @@ foreach ($row in $csv) {
     $fileContent = Get-FilePreview -FilePath $filePath -MaxChars $MaxChars
     if (-not $fileContent) {
         Write-Log "Could not read file: $filePath" "Warning"
-        $resultRow[$SummaryColumn] = "[COULD NOT READ FILE]"
+        $resultRow[$ResultColumn] = "[COULD NOT READ FILE]"
         # Save incrementally
         [PSCustomObject]$resultRow | Export-Csv -Path $OutputPath -NoTypeInformation -Encoding UTF8 -Append:(-not $isFirstWrite)
         $isFirstWrite = $false
@@ -405,37 +440,23 @@ foreach ($row in $csv) {
     $extension = $fileInfo.Extension
     $fileName = $fileInfo.Name
 
-    # Build Codex prompt
-    $prompt = @"
-Please read and summarize the following file.
-
-FILE: $fileName
-TYPE: $extension
-PATH: $filePath
-
---- FILE CONTENTS BEGIN ---
-$fileContent
---- FILE CONTENTS END ---
-
-Provide a concise summary (2-4 sentences) describing:
-1. What this file is/does
-2. Key functionality or content
-3. Any notable patterns or dependencies
-
-Keep the summary brief and technical.
-"@
+    # Build Codex prompt using template with placeholder substitution
+    $actualPrompt = $Prompt -replace '\{fileName\}', $fileName `
+                           -replace '\{extension\}', $extension `
+                           -replace '\{filePath\}', $filePath `
+                           -replace '\{fileContent\}', $fileContent
 
     # Send to Codex via CodexClient.ps1
-    $result = Send-CodexRequest -PipeName $PipeName -Prompt $prompt -TimeoutSeconds 120
+    $result = Send-CodexRequest -PipeName $PipeName -Prompt $actualPrompt -TimeoutSeconds 120
 
     if ($result.Success) {
-        # Clean up summary (remove extra whitespace)
-        $summary = $result.Summary -replace '\r?\n', ' ' -replace '\s+', ' '
-        $resultRow[$SummaryColumn] = $summary.Trim()
-        Write-Log "Summary added successfully" "Success"
+        # Clean up result (remove extra whitespace)
+        $resultText = $result.Summary -replace '\r?\n', ' ' -replace '\s+', ' '
+        $resultRow[$ResultColumn] = $resultText.Trim()
+        Write-Log "Result added successfully" "Success"
     } else {
-        $resultRow[$SummaryColumn] = $result.Summary
-        Write-Log "Failed to get summary" "Error"
+        $resultRow[$ResultColumn] = $result.Summary
+        Write-Log "Failed to get result" "Error"
     }
 
     # Save incrementally (crash-safe)

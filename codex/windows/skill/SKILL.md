@@ -56,9 +56,9 @@ $finalResult = $responses | Where-Object { $_.status -eq 'success' }
 $summary = $finalResult.result.message
 ```
 
-### Batch File Summarization
+### Batch File Processing
 
-Use the built-in CSV summarizer:
+Use the built-in CSV processor with custom prompts:
 
 ```powershell
 # Create CSV with file paths
@@ -68,12 +68,17 @@ C:\docs\report.docx,Reports
 C:\code\app.py,Code
 "@ | Out-File files.csv
 
-# Run summarizer (outputs files_summarized.csv)
-.\Summarize-Files.ps1 -CsvPath files.csv
+# Run with default summarization prompt (outputs files_processed.csv)
+.\Process-Files.ps1 -CsvPath files.csv
+
+# Run with custom prompt using placeholders
+.\Process-Files.ps1 -CsvPath files.csv -Prompt "Extract all dates from: {fileContent}"
 
 # Resume if interrupted
-.\Summarize-Files.ps1 -CsvPath files.csv -Resume
+.\Process-Files.ps1 -CsvPath files.csv -Resume
 ```
+
+Prompt placeholders: `{fileName}`, `{extension}`, `{filePath}`, `{fileContent}`
 
 ## Context Isolation
 

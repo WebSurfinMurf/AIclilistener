@@ -551,6 +551,177 @@ Remove-Item '$tempFile' -Force -ErrorAction SilentlyContinue
     [void]$dialog.ShowDialog($ParentForm)
 }
 
+# Function to show the Process Files dialog
+function Show-ProcessFilesDialog {
+    param([System.Windows.Forms.Form]$ParentForm)
+
+    $defaultPrompt = @"
+Please read and summarize the following file.
+
+FILE: {fileName}
+TYPE: {extension}
+PATH: {filePath}
+
+--- FILE CONTENTS BEGIN ---
+{fileContent}
+--- FILE CONTENTS END ---
+
+Provide a concise summary (2-4 sentences) describing:
+1. What this file is/does
+2. Key functionality or content
+3. Any notable patterns or dependencies
+
+Keep the summary brief and technical.
+"@
+
+    # Create dialog
+    $dialog = New-Object System.Windows.Forms.Form
+    $dialog.Text = "Process Files - Configure AI Prompt"
+    $dialog.Size = New-Object System.Drawing.Size(700, 550)
+    $dialog.StartPosition = "CenterParent"
+    $dialog.FormBorderStyle = "FixedDialog"
+    $dialog.MaximizeBox = $false
+    $dialog.MinimizeBox = $false
+    $dialog.BackColor = [System.Drawing.Color]::FromArgb(250, 250, 250)
+
+    # Info note at top
+    $noteLabel = New-Object System.Windows.Forms.Label
+    $noteLabel.Text = "Customize the prompt sent to the AI for each file. Use placeholders: {fileName}, {extension}, {filePath}, {fileContent}"
+    $noteLabel.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+    $noteLabel.ForeColor = [System.Drawing.Color]::FromArgb(100, 100, 100)
+    $noteLabel.Location = New-Object System.Drawing.Point(20, 12)
+    $noteLabel.Size = New-Object System.Drawing.Size(645, 35)
+    $dialog.Controls.Add($noteLabel)
+
+    # Prompt label
+    $promptLabel = New-Object System.Windows.Forms.Label
+    $promptLabel.Text = "AI Prompt Template:"
+    $promptLabel.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+    $promptLabel.Location = New-Object System.Drawing.Point(20, 55)
+    $promptLabel.Size = New-Object System.Drawing.Size(200, 25)
+    $dialog.Controls.Add($promptLabel)
+
+    # Prompt text box (multiline)
+    $promptBox = New-Object System.Windows.Forms.TextBox
+    $promptBox.Multiline = $true
+    $promptBox.ScrollBars = "Vertical"
+    $promptBox.Font = New-Object System.Drawing.Font("Consolas", 9)
+    $promptBox.Location = New-Object System.Drawing.Point(20, 85)
+    $promptBox.Size = New-Object System.Drawing.Size(645, 280)
+    $promptBox.AcceptsReturn = $true
+    $promptBox.Text = $defaultPrompt
+    $dialog.Controls.Add($promptBox)
+
+    # CSV file section
+    $csvLabel = New-Object System.Windows.Forms.Label
+    $csvLabel.Text = "CSV File (first column must contain file paths):"
+    $csvLabel.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+    $csvLabel.Location = New-Object System.Drawing.Point(20, 380)
+    $csvLabel.Size = New-Object System.Drawing.Size(400, 25)
+    $dialog.Controls.Add($csvLabel)
+
+    # CSV path textbox
+    $csvPathBox = New-Object System.Windows.Forms.TextBox
+    $csvPathBox.Font = New-Object System.Drawing.Font("Consolas", 10)
+    $csvPathBox.Location = New-Object System.Drawing.Point(20, 410)
+    $csvPathBox.Size = New-Object System.Drawing.Size(540, 25)
+    $csvPathBox.ReadOnly = $true
+    $csvPathBox.BackColor = [System.Drawing.Color]::White
+    $dialog.Controls.Add($csvPathBox)
+
+    # Browse button
+    $browseButton = New-Object System.Windows.Forms.Button
+    $browseButton.Text = "Browse..."
+    $browseButton.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+    $browseButton.Location = New-Object System.Drawing.Point(570, 408)
+    $browseButton.Size = New-Object System.Drawing.Size(95, 28)
+    $browseButton.BackColor = [System.Drawing.Color]::FromArgb(96, 125, 139)
+    $browseButton.ForeColor = [System.Drawing.Color]::White
+    $browseButton.FlatStyle = "Flat"
+    $browseButton.FlatAppearance.BorderSize = 0
+    $browseButton.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $dialog.Controls.Add($browseButton)
+
+    $browseButton.Add_Click({
+        $openDialog = New-Object System.Windows.Forms.OpenFileDialog
+        $openDialog.Title = "Select CSV file with file paths to process"
+        $openDialog.Filter = "CSV files (*.csv)|*.csv|All files (*.*)|*.*"
+        $openDialog.InitialDirectory = [Environment]::GetFolderPath('Desktop')
+
+        if ($openDialog.ShowDialog($dialog) -eq [System.Windows.Forms.DialogResult]::OK) {
+            $csvPathBox.Text = $openDialog.FileName
+        }
+    })
+
+    # Start button
+    $startButton = New-Object System.Windows.Forms.Button
+    $startButton.Text = "Start Processing"
+    $startButton.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+    $startButton.Location = New-Object System.Drawing.Point(20, 460)
+    $startButton.Size = New-Object System.Drawing.Size(150, 35)
+    $startButton.BackColor = [System.Drawing.Color]::FromArgb(156, 39, 176)
+    $startButton.ForeColor = [System.Drawing.Color]::White
+    $startButton.FlatStyle = "Flat"
+    $startButton.FlatAppearance.BorderSize = 0
+    $startButton.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $dialog.Controls.Add($startButton)
+
+    # Cancel button
+    $cancelButton = New-Object System.Windows.Forms.Button
+    $cancelButton.Text = "Cancel"
+    $cancelButton.Font = New-Object System.Drawing.Font("Segoe UI", 10)
+    $cancelButton.Location = New-Object System.Drawing.Point(565, 460)
+    $cancelButton.Size = New-Object System.Drawing.Size(100, 35)
+    $cancelButton.BackColor = [System.Drawing.Color]::FromArgb(120, 120, 120)
+    $cancelButton.ForeColor = [System.Drawing.Color]::White
+    $cancelButton.FlatStyle = "Flat"
+    $cancelButton.FlatAppearance.BorderSize = 0
+    $cancelButton.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $cancelButton.Add_Click({ $dialog.Close() })
+    $dialog.Controls.Add($cancelButton)
+
+    # Start button click handler
+    $startButton.Add_Click({
+        $csvPath = $csvPathBox.Text.Trim()
+        $promptText = $promptBox.Text
+
+        if ([string]::IsNullOrEmpty($csvPath)) {
+            [System.Windows.Forms.MessageBox]::Show(
+                "Please select a CSV file first.",
+                "Missing CSV File",
+                [System.Windows.Forms.MessageBoxButtons]::OK,
+                [System.Windows.Forms.MessageBoxIcon]::Warning
+            )
+            return
+        }
+
+        if (-not (Test-Path $csvPath)) {
+            [System.Windows.Forms.MessageBox]::Show(
+                "The selected CSV file does not exist.",
+                "File Not Found",
+                [System.Windows.Forms.MessageBoxButtons]::OK,
+                [System.Windows.Forms.MessageBoxIcon]::Error
+            )
+            return
+        }
+
+        # Save prompt to temp file to avoid quoting issues
+        $tempPromptFile = [System.IO.Path]::GetTempFileName()
+        [System.IO.File]::WriteAllText($tempPromptFile, $promptText, [System.Text.UTF8Encoding]::new($false))
+
+        # Build the command to run
+        $scriptPath = Join-Path $scriptDir "Process-Files.ps1"
+
+        # Launch in new window
+        $cmd = "powershell -ExecutionPolicy Bypass -Command `"& '$scriptPath' -CsvPath '$csvPath' -Prompt (Get-Content -Path '$tempPromptFile' -Raw)`" && echo. && echo Press Enter to close... && pause >nul"
+        Start-Process cmd.exe -ArgumentList "/k", $cmd
+
+        $dialog.Close()
+    })
+
+    [void]$dialog.ShowDialog($ParentForm)
+}
+
 # Main scripts (excluding setup items)
 $scripts = @(
     @{
@@ -577,10 +748,11 @@ $scripts = @(
         Color = [System.Drawing.Color]::FromArgb(25, 118, 210)  # Blue
     },
     @{
-        Name = "Summarize-Files.ps1"
-        Description = "Reads file paths from CSV, extracts text, sends to CodexService for AI summary, appends results"
+        Name = "Process-Files.ps1"
+        Description = "Process files from CSV with custom AI prompts (summarize, extract, analyze, etc.)"
         Color = [System.Drawing.Color]::FromArgb(156, 39, 176)  # Purple
         Height = 56  # 25% taller for longer description
+        ProcessFilesDialog = $true
     }
 )
 
@@ -702,6 +874,9 @@ Click OK to select your working directory.
 
             $selectedDir = $folderBrowser.SelectedPath
             Start-Process cmd.exe -ArgumentList "/k", "cd /d `"$selectedDir`" && powershell -ExecutionPolicy Bypass -File `"$path`""
+
+        } elseif ($info.ProcessFilesDialog) {
+            Show-ProcessFilesDialog -ParentForm $form
 
         } else {
             Start-Process cmd.exe -ArgumentList "/k", "powershell -ExecutionPolicy Bypass -File `"$path`" && echo. && echo Press Enter to close... && pause >nul"
