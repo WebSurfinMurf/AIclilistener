@@ -1,8 +1,8 @@
-# AIclilistener - Project Context
+# aiclilistener - Project Context
 
 ## Overview
 
-AIclilistener provides persistent listener services for AI CLI tools, enabling JSON-based IPC to invoke AI assistants programmatically.
+aiclilistener provides persistent listener services for AI CLI tools, enabling JSON-based IPC to invoke AI assistants programmatically.
 
 ## Current Implementations
 

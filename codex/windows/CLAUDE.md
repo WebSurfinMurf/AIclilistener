@@ -9,8 +9,8 @@ A PowerShell-based service that wraps OpenAI Codex CLI, allowing you to send JSO
 ## Quick Start (Run the Demo)
 
 ```powershell
-git clone https://github.com/WebSurfinMurf/AIclilistener.git
-cd AIclilistener\codex\windows
+git clone https://github.com/WebSurfinMurf/aiclilistener.git
+cd aiclilistener\codex\windows
 .\demo.ps1
 ```
 
@@ -63,7 +63,7 @@ codex/windows/
 
 ### Start the Service (Terminal 1)
 ```powershell
-cd AIclilistener\codex\windows
+cd aiclilistener\codex\windows
 .\Start-Service.bat
 ```
 
@@ -80,7 +80,7 @@ You should see:
 
 ### Test Basic Commands (Terminal 2)
 ```powershell
-cd AIclilistener\codex\windows
+cd aiclilistener\codex\windows
 
 # Health check
 .\CodexClient.ps1 -Command ping
